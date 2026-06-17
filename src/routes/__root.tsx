@@ -119,6 +119,13 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
+  useEffect(() => {
+    // Apply saved theme as early as possible to avoid a flash.
+    import("../lib/stats").then(({ loadTheme, applyTheme }) => applyTheme(loadTheme()));
+    // Register the offline service worker (no-op in Lovable preview / dev).
+    import("../lib/pwa").then(({ registerPWA }) => registerPWA());
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
