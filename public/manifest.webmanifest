@@ -1,0 +1,14 @@
+{
+  "name": "Pace — Speed Reading Trainer",
+  "short_name": "Pace",
+  "description": "Train your reading speed with PDFs and EPUBs. Tracks daily progress on-device.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6efe2",
+  "theme_color": "#d97a3d",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

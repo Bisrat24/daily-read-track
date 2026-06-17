@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Flame } from "lucide-react";
-import { dailyTotals, dayKey, loadStats, pagesFromWords } from "@/lib/stats";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Flame, Download, Upload } from "lucide-react";
+import { dailyTotals, dayKey, downloadBackup, importBackup, loadStats, pagesFromWords } from "@/lib/stats";
+import { toast } from "sonner";
 
 export function ProgressCalendar() {
   const [tick, setTick] = useState(0);
@@ -89,14 +90,64 @@ export function ProgressCalendar() {
         )}
       </div>
 
-      <div className="mt-3 flex items-center justify-end gap-2 text-[10px] text-muted-foreground">
-        <span>less</span>
-        {[0.08, 0.25, 0.5, 0.85].map((a) => (
-          <span key={a} className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: `color-mix(in oklab, var(--ember) ${a * 100}%, transparent)` }} />
-        ))}
-        <span>more</span>
+      <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+        <BackupControls />
+        <div className="flex items-center gap-2">
+          <span>less</span>
+          {[0.08, 0.25, 0.5, 0.85].map((a) => (
+            <span key={a} className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: `color-mix(in oklab, var(--ember) ${a * 100}%, transparent)` }} />
+          ))}
+          <span>more</span>
+        </div>
       </div>
     </section>
+  );
+}
+
+function BackupControls() {
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function onPick(file: File) {
+    try {
+      const text = await file.text();
+      const replace = window.confirm(
+        "Replace your current calendar with the backup?\n\nOK = Replace · Cancel = Merge (keeps both)",
+      );
+      const res = importBackup(text, replace ? "replace" : "merge");
+      toast.success(`Imported ${res.added} entries (${res.total} total).`);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't read this backup file.");
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        ref={fileRef}
+        type="file"
+        accept="application/json,.json"
+        className="sr-only"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onPick(f);
+          e.target.value = "";
+        }}
+      />
+      <button
+        type="button"
+        onClick={downloadBackup}
+        className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-ink/80 hover:bg-secondary"
+      >
+        <Download className="h-3 w-3" /> Export
+      </button>
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-ink/80 hover:bg-secondary"
+      >
+        <Upload className="h-3 w-3" /> Import
+      </button>
+    </div>
   );
 }
 

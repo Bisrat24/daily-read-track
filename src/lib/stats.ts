@@ -124,3 +124,82 @@ export function dailyTotals(stats: Stats): Record<DayKey, number> {
   }
   return map;
 }
+
+// ---- Backup / restore -------------------------------------------------------
+
+export type StatsBackup = {
+  app: "pace";
+  version: 1;
+  exportedAt: number;
+  stats: Stats;
+  settings: Settings;
+};
+
+export function exportBackup(): StatsBackup {
+  return {
+    app: "pace",
+    version: 1,
+    exportedAt: Date.now(),
+    stats: loadStats(),
+    settings: loadSettings(),
+  };
+}
+
+export function downloadBackup() {
+  if (!isBrowser()) return;
+  const data = exportBackup();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `pace-backup-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export type ImportMode = "merge" | "replace";
+
+export function importBackup(raw: string, mode: ImportMode = "merge"): { added: number; total: number } {
+  if (!isBrowser()) return { added: 0, total: 0 };
+  const parsed = JSON.parse(raw) as Partial<StatsBackup>;
+  if (parsed?.app !== "pace" || !parsed.stats?.events) {
+    throw new Error("This file isn't a valid Pace backup.");
+  }
+  const incoming = parsed.stats.events.filter(
+    (e) => typeof e?.at === "number" && typeof e?.words === "number",
+  );
+  let merged: ReadingEvent[];
+  if (mode === "replace") {
+    merged = incoming;
+  } else {
+    const existing = loadStats().events;
+    const seen = new Set(existing.map((e) => `${e.at}:${e.words}`));
+    const adds = incoming.filter((e) => !seen.has(`${e.at}:${e.words}`));
+    merged = [...existing, ...adds].sort((a, b) => a.at - b.at);
+  }
+  saveStats({ events: merged });
+  if (parsed.settings) saveSettings({ ...defaultSettings, ...parsed.settings });
+  window.dispatchEvent(new Event("pace:stats-changed"));
+  return { added: incoming.length, total: merged.length };
+}
+
+// ---- Theme ------------------------------------------------------------------
+
+const THEME_KEY = "pace.theme.v1";
+export type Theme = "light" | "dark";
+
+export function loadTheme(): Theme {
+  if (!isBrowser()) return "light";
+  const stored = localStorage.getItem(THEME_KEY) as Theme | null;
+  if (stored === "light" || stored === "dark") return stored;
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+export function applyTheme(theme: Theme) {
+  if (!isBrowser()) return;
+  document.documentElement.classList.toggle("dark", theme === "dark");
+  localStorage.setItem(THEME_KEY, theme);
+}
