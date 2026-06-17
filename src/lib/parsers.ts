@@ -13,11 +13,10 @@ function toWords(text: string): string[] {
 }
 
 export async function parsePdf(file: File): Promise<ParsedBook> {
-  const pdfjs = await import("pdfjs-dist");
-  // Use the bundled worker as a URL.
-  // @ts-expect-error - vite ?url import
-  const workerUrl = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+  const pdfjs: any = await import("pdfjs-dist");
+  const workerUrl = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url" as any)).default;
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+
 
   const buf = await file.arrayBuffer();
   const doc = await pdfjs.getDocument({ data: buf }).promise;
