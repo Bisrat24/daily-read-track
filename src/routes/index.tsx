@@ -1,12 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { BookMarked, Sparkles, Play, Trash2 } from "lucide-react";
+import { BookMarked, Sparkles, Play, Trash2, Sun, Moon } from "lucide-react";
 import { Uploader } from "@/components/reader/Uploader";
 import { SpeedReader } from "@/components/reader/SpeedReader";
 import { StatsBar } from "@/components/reader/StatsBar";
 import { ProgressCalendar } from "@/components/reader/ProgressCalendar";
 import { Button } from "@/components/ui/button";
-import { BOOK_KEY } from "@/lib/stats";
+import { Switch } from "@/components/ui/switch";
+import { BOOK_KEY, applyTheme, loadTheme, type Theme } from "@/lib/stats";
+import { idbDel, idbGet, idbSet } from "@/lib/idb";
 import type { ParsedBook } from "@/lib/parsers";
 
 export const Route = createFileRoute("/")({
@@ -24,57 +26,88 @@ export const Route = createFileRoute("/")({
 
 type SavedBook = { book: ParsedBook; position: number };
 
-function loadSavedBook(): SavedBook | null {
+async function loadSavedBook(): Promise<SavedBook | null> {
   if (typeof window === "undefined") return null;
+  // Prefer IndexedDB; fall back to (and migrate from) localStorage.
+  const fromIdb = await idbGet<SavedBook>(BOOK_KEY);
+  if (fromIdb) return fromIdb;
   try {
     const raw = localStorage.getItem(BOOK_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as SavedBook;
+    const parsed = JSON.parse(raw) as SavedBook;
+    await idbSet(BOOK_KEY, parsed);
+    localStorage.removeItem(BOOK_KEY);
+    return parsed;
   } catch {
     return null;
   }
 }
 
-function saveSavedBook(s: SavedBook | null) {
+async function saveSavedBook(s: SavedBook | null) {
   if (typeof window === "undefined") return;
-  if (!s) localStorage.removeItem(BOOK_KEY);
-  else localStorage.setItem(BOOK_KEY, JSON.stringify(s));
+  if (!s) {
+    await idbDel(BOOK_KEY);
+    try { localStorage.removeItem(BOOK_KEY); } catch { /* ignore */ }
+  } else {
+    await idbSet(BOOK_KEY, s);
+  }
 }
 
 function Index() {
   const [saved, setSaved] = useState<SavedBook | null>(null);
   const [reading, setReading] = useState(false);
+  const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => {
-    setSaved(loadSavedBook());
+    loadSavedBook().then(setSaved);
+    setTheme(loadTheme());
   }, []);
 
   function onLoaded(book: ParsedBook) {
     const s = { book, position: 0 };
     setSaved(s);
-    saveSavedBook(s);
+    void saveSavedBook(s);
     setReading(true);
   }
 
   function onPosition(p: number) {
-    if (!saved) return;
-    const next = { ...saved, position: p };
-    setSaved(next);
-    saveSavedBook(next);
+    setSaved((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, position: p };
+      void saveSavedBook(next);
+      return next;
+    });
   }
 
   function removeBook() {
     setSaved(null);
-    saveSavedBook(null);
+    void saveSavedBook(null);
+  }
+
+  function toggleTheme(checked: boolean) {
+    const next: Theme = checked ? "dark" : "light";
+    setTheme(next);
+    applyTheme(next);
   }
 
   return (
     <div className="min-h-screen pb-16">
       <header className="px-5 pt-8 pb-4">
         <div className="mx-auto max-w-2xl">
-          <div className="flex items-center gap-2 text-ember">
-            <Sparkles className="h-4 w-4" />
-            <span className="text-xs font-medium uppercase tracking-[0.18em]">Pace</span>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-ember">
+              <Sparkles className="h-4 w-4" />
+              <span className="text-xs font-medium uppercase tracking-[0.18em]">Pace</span>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Sun className={`h-4 w-4 ${theme === "light" ? "text-ember" : ""}`} />
+              <Switch
+                checked={theme === "dark"}
+                onCheckedChange={toggleTheme}
+                aria-label="Toggle dark mode"
+              />
+              <Moon className={`h-4 w-4 ${theme === "dark" ? "text-ember" : ""}`} />
+            </label>
           </div>
           <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight text-ink text-balance">
             Read faster, one page at a time.
@@ -140,7 +173,7 @@ function Index() {
         <ProgressCalendar />
 
         <footer className="pt-2 text-center text-xs text-muted-foreground">
-          Your books and progress are stored only on this device.
+          Your books and progress are stored only on this device. Works offline once installed.
         </footer>
       </main>
 
