@@ -39,7 +39,9 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const wordsSinceRecordRef = useRef(0);
 
   useEffect(() => setSettings(loadSettings()), []);
-  useEffect(() => onPosition(idx), [idx, onPosition]);
+  const onPositionRef = useRef(onPosition);
+  useEffect(() => { onPositionRef.current = onPosition; }, [onPosition]);
+  useEffect(() => { onPositionRef.current(idx); }, [idx]);
 
   // Effective WPM ramps linearly from startWpm to targetWpm over rampMinutes.
   function currentWpm() {
