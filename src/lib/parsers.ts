@@ -17,7 +17,6 @@ export async function parsePdf(file: File): Promise<ParsedBook> {
   const workerUrl = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url" as any)).default;
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
-
   const buf = await file.arrayBuffer();
   const doc = await pdfjs.getDocument({ data: buf }).promise;
   const parts: string[] = [];
@@ -34,9 +33,72 @@ export async function parsePdf(file: File): Promise<ParsedBook> {
 }
 
 export async function parseEpub(file: File): Promise<ParsedBook> {
+  const buf = await file.arrayBuffer();
+
+  // Primary path: parse the EPUB zip directly so we don't depend on
+  // epub.js's section loader (which is fragile in some browsers / on mobile).
+  try {
+    const JSZipMod: any = await import("jszip");
+    const JSZip = JSZipMod.default ?? JSZipMod;
+    const zip = await JSZip.loadAsync(buf);
+
+    // Find container.xml -> rootfile (the OPF)
+    const containerFile = zip.file("META-INF/container.xml");
+    if (!containerFile) throw new Error("Missing container.xml");
+    const containerXml = await containerFile.async("string");
+    const rootMatch = containerXml.match(/full-path="([^"]+)"/);
+    if (!rootMatch) throw new Error("Missing rootfile path");
+    const opfPath = rootMatch[1];
+    const opfDir = opfPath.includes("/") ? opfPath.slice(0, opfPath.lastIndexOf("/") + 1) : "";
+
+    const opfFile = zip.file(opfPath);
+    if (!opfFile) throw new Error("Missing OPF");
+    const opfXml = await opfFile.async("string");
+
+    // manifest: id -> href
+    const manifest = new Map<string, string>();
+    for (const m of opfXml.matchAll(/<item\b[^>]*\/>/g)) {
+      const tag = m[0];
+      const id = tag.match(/\bid="([^"]+)"/)?.[1];
+      const href = tag.match(/\bhref="([^"]+)"/)?.[1];
+      const mediaType = tag.match(/\bmedia-type="([^"]+)"/)?.[1] ?? "";
+      if (id && href && /xhtml|html/.test(mediaType)) manifest.set(id, href);
+    }
+    // spine order
+    const spineRefs = [...opfXml.matchAll(/<itemref\b[^>]*idref="([^"]+)"/g)].map((m) => m[1]);
+
+    const parser = new DOMParser();
+    const parts: string[] = [];
+    for (const ref of spineRefs) {
+      const href = manifest.get(ref);
+      if (!href) continue;
+      const path = (opfDir + href).split("#")[0];
+      const f = zip.file(path);
+      if (!f) continue;
+      try {
+        const xml = await f.async("string");
+        const doc = parser.parseFromString(xml, "application/xhtml+xml");
+        const text = (doc.body?.textContent ?? doc.documentElement?.textContent ?? "").trim();
+        if (text) parts.push(text);
+      } catch {
+        /* skip broken section */
+      }
+    }
+
+    let title = file.name.replace(/\.epub$/i, "");
+    const titleMatch = opfXml.match(/<dc:title[^>]*>([^<]+)<\/dc:title>/);
+    if (titleMatch?.[1]) title = titleMatch[1].trim();
+
+    const words = toWords(parts.join("\n\n"));
+    if (words.length) return { title, words };
+    // fall through to epub.js fallback
+  } catch {
+    /* fall through to epub.js */
+  }
+
+  // Fallback: epub.js
   const ePubMod: any = await import("epubjs");
   const ePub = ePubMod.default ?? ePubMod;
-  const buf = await file.arrayBuffer();
   const book = ePub(buf);
   await book.ready;
   const spine: any = book.spine;
@@ -45,11 +107,12 @@ export async function parseEpub(file: File): Promise<ParsedBook> {
   for (const item of items) {
     try {
       const doc = await item.load(book.load.bind(book));
-      const text = (doc?.body?.innerText ?? doc?.documentElement?.textContent ?? "") as string;
-      if (text) parts.push(text);
+      const text =
+        (doc?.body?.textContent ?? doc?.documentElement?.textContent ?? "") as string;
+      if (text?.trim()) parts.push(text);
       item.unload();
     } catch {
-      /* skip broken section */
+      /* skip */
     }
   }
   let title = file.name.replace(/\.epub$/i, "");
