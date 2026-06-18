@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Play, Pause, RotateCcw, ChevronLeft, ChevronRight, X } from "lucide-react";
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  X,
+  CornerDownRight,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   loadSettings,
@@ -20,7 +31,6 @@ type Props = {
   onClose: () => void;
 };
 
-// Optical centering: pick the index of the focus letter (ORP-like).
 function focusIndex(word: string) {
   const len = word.length;
   if (len <= 1) return 0;
@@ -34,16 +44,50 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [playing, setPlaying] = useState(false);
   const [idx, setIdx] = useState(position);
+  const [pageInput, setPageInput] = useState("");
   const startedAtRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(0);
   const wordsSinceRecordRef = useRef(0);
+  const wakeLockRef = useRef<any>(null);
 
   useEffect(() => setSettings(loadSettings()), []);
   const onPositionRef = useRef(onPosition);
   useEffect(() => { onPositionRef.current = onPosition; }, [onPosition]);
   useEffect(() => { onPositionRef.current(idx); }, [idx]);
 
-  // Effective WPM ramps linearly from startWpm to targetWpm over rampMinutes.
+  // --- Keep screen awake while the reader is mounted (Wake Lock API) ----------
+  useEffect(() => {
+    let cancelled = false;
+    async function request() {
+      try {
+        const wl: any = (navigator as any).wakeLock;
+        if (!wl?.request) return;
+        const lock = await wl.request("screen");
+        if (cancelled) {
+          lock.release?.();
+          return;
+        }
+        wakeLockRef.current = lock;
+        lock.addEventListener?.("release", () => {
+          wakeLockRef.current = null;
+        });
+      } catch {
+        /* user gesture or permission issue — ignore */
+      }
+    }
+    request();
+    const onVis = () => {
+      if (document.visibilityState === "visible" && !wakeLockRef.current) request();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      try { wakeLockRef.current?.release?.(); } catch { /* ignore */ }
+      wakeLockRef.current = null;
+    };
+  }, []);
+
   function currentWpm() {
     const { startWpm, targetWpm, rampMinutes } = settings;
     const startedAt = startedAtRef.current;
@@ -55,7 +99,6 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
   const chunkSize = settings.mode === "rsvp" ? 1 : Math.max(1, settings.chunkSize);
 
-  // Main tick loop
   useEffect(() => {
     if (!playing) return;
     if (!startedAtRef.current) startedAtRef.current = Date.now();
@@ -109,7 +152,6 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const pageNum = Math.floor(idx / WORDS_PER_PAGE) + 1;
   const totalPages = Math.max(1, Math.ceil(book.words.length / WORDS_PER_PAGE));
 
-  // Chunk-mode rendering: a paragraph-style window with current chunk highlighted.
   const chunkWindow = useMemo(() => {
     if (settings.mode === "rsvp") return null;
     const windowSize = 60;
@@ -118,6 +160,17 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     const slice = book.words.slice(start, end);
     return { start, end, slice };
   }, [idx, settings.mode, book.words]);
+
+  function jumpToPage(p: number) {
+    const clamped = Math.max(1, Math.min(totalPages, Math.floor(p)));
+    setIdx((clamped - 1) * WORDS_PER_PAGE);
+    lastTickRef.current = 0;
+  }
+
+  function step(delta: number) {
+    setIdx((i) => Math.max(0, Math.min(book.words.length - 1, i + delta)));
+    lastTickRef.current = 0;
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
@@ -180,12 +233,23 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
       {/* Controls */}
       <div className="space-y-5 p-6 pt-4">
-        <div className="flex items-center justify-center gap-3">
+        {/* Transport: page back · chunk back · play · chunk fwd · page fwd · restart */}
+        <div className="flex items-center justify-center gap-2">
           <Button
             variant="outline"
             size="icon"
-            onClick={() => setIdx((i) => Math.max(0, i - WORDS_PER_PAGE))}
+            onClick={() => step(-WORDS_PER_PAGE)}
             aria-label="Back one page"
+            title="Back one page"
+          >
+            <ChevronsLeft className="h-5 w-5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => step(-chunkSize)}
+            aria-label="Back"
+            title={`Back ${chunkSize} word${chunkSize > 1 ? "s" : ""}`}
           >
             <ChevronLeft className="h-5 w-5" />
           </Button>
@@ -204,10 +268,20 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
           <Button
             variant="outline"
             size="icon"
-            onClick={() => setIdx((i) => Math.min(book.words.length - 1, i + WORDS_PER_PAGE))}
-            aria-label="Forward one page"
+            onClick={() => step(chunkSize)}
+            aria-label="Forward"
+            title={`Forward ${chunkSize} word${chunkSize > 1 ? "s" : ""}`}
           >
             <ChevronRight className="h-5 w-5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => step(WORDS_PER_PAGE)}
+            aria-label="Forward one page"
+            title="Forward one page"
+          >
+            <ChevronsRight className="h-5 w-5" />
           </Button>
           <Button
             variant="ghost"
@@ -217,10 +291,39 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
               lastTickRef.current = 0;
             }}
             aria-label="Restart ramp"
+            title="Restart speed ramp"
           >
             <RotateCcw className="h-5 w-5" />
           </Button>
         </div>
+
+        {/* Jump-to-page */}
+        <form
+          className="flex items-center justify-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const n = parseInt(pageInput, 10);
+            if (Number.isFinite(n)) {
+              jumpToPage(n);
+              setPageInput("");
+            }
+          }}
+        >
+          <label className="text-xs text-muted-foreground">Jump to page</label>
+          <Input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={totalPages}
+            value={pageInput}
+            onChange={(e) => setPageInput(e.target.value)}
+            placeholder={String(pageNum)}
+            className="h-8 w-20 text-center"
+          />
+          <Button type="submit" size="sm" variant="outline" className="h-8 gap-1">
+            <CornerDownRight className="h-3.5 w-3.5" /> Go
+          </Button>
+        </form>
 
         <div className="space-y-4 rounded-2xl border border-border bg-card/60 p-4">
           <SliderRow
@@ -244,15 +347,14 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             min={1} max={60} step={1}
             onChange={(v) => update("rampMinutes", v)}
           />
-          {settings.mode === "chunk" && (
-            <SliderRow
-              label="Chunk"
-              value={settings.chunkSize}
-              unit="words"
-              min={1} max={5} step={1}
-              onChange={(v) => update("chunkSize", v)}
-            />
-          )}
+          <SliderRow
+            label="Chunk"
+            value={settings.chunkSize}
+            unit="words"
+            min={1} max={6} step={1}
+            onChange={(v) => update("chunkSize", v)}
+            hint={settings.mode === "rsvp" ? "Used in Highlight mode" : undefined}
+          />
         </div>
       </div>
     </div>
@@ -260,16 +362,20 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 }
 
 function SliderRow({
-  label, value, unit, min, max, step, onChange,
+  label, value, unit, min, max, step, onChange, hint,
 }: {
   label: string; value: number; unit: string;
   min: number; max: number; step: number;
   onChange: (v: number) => void;
+  hint?: string;
 }) {
   return (
     <div>
       <div className="mb-1.5 flex items-baseline justify-between">
-        <span className="text-sm font-medium text-ink">{label}</span>
+        <span className="text-sm font-medium text-ink">
+          {label}
+          {hint && <span className="ml-2 text-[11px] font-normal text-muted-foreground">{hint}</span>}
+        </span>
         <span className="font-mono text-sm tabular-nums text-muted-foreground">
           {value} <span className="text-xs">{unit}</span>
         </span>
@@ -316,7 +422,7 @@ function ChunkStage({
             key={i}
             className={
               active
-                ? "rounded bg-ember/20 px-0.5 text-ink"
+                ? "rounded bg-ember/25 px-0.5 text-ink"
                 : abs < currentIdx
                 ? "text-muted-foreground/60"
                 : ""
