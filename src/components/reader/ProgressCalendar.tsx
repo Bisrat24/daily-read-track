@@ -106,9 +106,13 @@ export function ProgressCalendar() {
 
 function BackupControls() {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
 
   async function onPick(file: File) {
     try {
+      if (!/\.json$/i.test(file.name) && file.type !== "application/json") {
+        throw new Error("Please choose a .json backup file.");
+      }
       const text = await file.text();
       const replace = window.confirm(
         "Replace your current calendar with the backup?\n\nOK = Replace · Cancel = Merge (keeps both)",
@@ -121,7 +125,20 @@ function BackupControls() {
   }
 
   return (
-    <div className="flex items-center gap-1">
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const f = e.dataTransfer.files?.[0];
+        if (f) onPick(f);
+      }}
+      className={`flex items-center gap-1 rounded-md border border-dashed px-1.5 py-1 transition-colors ${
+        dragOver ? "border-ember bg-accent/40" : "border-transparent"
+      }`}
+      title="Drop a Pace backup JSON here to restore"
+    >
       <input
         ref={fileRef}
         type="file"
@@ -145,7 +162,7 @@ function BackupControls() {
         onClick={() => fileRef.current?.click()}
         className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-ink/80 hover:bg-secondary"
       >
-        <Upload className="h-3 w-3" /> Import
+        <Upload className="h-3 w-3" /> {dragOver ? "Drop to import" : "Import / Drop"}
       </button>
     </div>
   );
