@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Play,
   Pause,
@@ -9,6 +9,7 @@ import {
   ChevronsRight,
   X,
   CornerDownRight,
+  Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -45,53 +46,62 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const [playing, setPlaying] = useState(false);
   const [idx, setIdx] = useState(position);
   const [pageInput, setPageInput] = useState("");
+  const [panelOpen, setPanelOpen] = useState(true);
   const startedAtRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(0);
   const wordsSinceRecordRef = useRef(0);
+  // Persistent wake lock sentinel — never cleared by re-renders/timer updates.
   const wakeLockRef = useRef<any>(null);
+  const wakeLockWantedRef = useRef(false);
 
   useEffect(() => setSettings(loadSettings()), []);
   const onPositionRef = useRef(onPosition);
   useEffect(() => { onPositionRef.current = onPosition; }, [onPosition]);
   useEffect(() => { onPositionRef.current(idx); }, [idx]);
 
-  // --- Screen Wake Lock: acquire ONLY while actively playing ------------------
+  // --- Wake Lock helpers ------------------------------------------------------
+  // Acquire is called DIRECTLY from the Play onClick handler (user gesture),
+  // which Opera / Chromium require. We never re-acquire from state effects
+  // while playing, so timer/slider re-renders can't drop the lock.
+  const acquireWakeLock = useCallback(async () => {
+    wakeLockWantedRef.current = true;
+    try {
+      const wl: any = (navigator as any).wakeLock;
+      if (!wl?.request) return;
+      if (wakeLockRef.current) return; // already held
+      const lock = await wl.request("screen");
+      wakeLockRef.current = lock;
+      lock.addEventListener?.("release", () => {
+        wakeLockRef.current = null;
+      });
+    } catch {
+      /* ignore — permission/gesture rejection */
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(() => {
+    wakeLockWantedRef.current = false;
+    try { wakeLockRef.current?.release?.(); } catch { /* ignore */ }
+    wakeLockRef.current = null;
+  }, []);
+
+  // Re-acquire when returning from background (browsers auto-release on hide).
   useEffect(() => {
-    if (!playing) {
-      try { wakeLockRef.current?.release?.(); } catch { /* ignore */ }
-      wakeLockRef.current = null;
-      return;
-    }
-    let cancelled = false;
-    async function request() {
-      try {
-        const wl: any = (navigator as any).wakeLock;
-        if (!wl?.request) return;
-        const lock = await wl.request("screen");
-        if (cancelled) {
-          try { lock.release?.(); } catch { /* ignore */ }
-          return;
-        }
-        wakeLockRef.current = lock;
-        lock.addEventListener?.("release", () => {
-          wakeLockRef.current = null;
-        });
-      } catch {
-        /* user gesture / permission — ignore */
-      }
-    }
-    request();
     const onVis = () => {
-      if (document.visibilityState === "visible" && playing && !wakeLockRef.current) request();
+      if (
+        document.visibilityState === "visible" &&
+        wakeLockWantedRef.current &&
+        !wakeLockRef.current
+      ) {
+        acquireWakeLock();
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => {
-      cancelled = true;
       document.removeEventListener("visibilitychange", onVis);
-      try { wakeLockRef.current?.release?.(); } catch { /* ignore */ }
-      wakeLockRef.current = null;
+      releaseWakeLock();
     };
-  }, [playing]);
+  }, [acquireWakeLock, releaseWakeLock]);
 
   function currentWpm() {
     const { startWpm, targetWpm, rampMinutes } = settings;
@@ -183,44 +193,72 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     lastTickRef.current = 0;
   }
 
+  // Play button handler — acquires wake lock inline in the user gesture.
+  function handlePlayClick() {
+    const nextPlaying = !playing;
+    if (nextPlaying) {
+      // Fire-and-forget INSIDE the click event to satisfy Opera's gesture check.
+      acquireWakeLock();
+      if (!startedAtRef.current) startedAtRef.current = Date.now();
+    } else {
+      flushRecord();
+      releaseWakeLock();
+    }
+    setPlaying(nextPlaying);
+    lastTickRef.current = 0;
+  }
+
+  const immersive = playing && settings.mode !== "rsvp";
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-border bg-paper/80 px-4 py-3 backdrop-blur">
-        <button
-          onClick={() => { flushRecord(); onClose(); }}
-          className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary"
-          aria-label="Close reader"
-        >
-          <X className="h-5 w-5" />
-        </button>
-        <div className="text-center">
-          <p className="font-display text-sm font-semibold text-ink truncate max-w-[180px]">
-            {book.title}
-          </p>
-          <p className="text-[11px] text-muted-foreground">
-            Page {pageNum} / {totalPages} · {wpm} wpm
-          </p>
+      {/* Header — hidden in immersive reading */}
+      {!immersive && (
+        <div className="flex items-center justify-between border-b border-border bg-paper/80 px-4 py-3 backdrop-blur">
+          <button
+            onClick={() => { flushRecord(); releaseWakeLock(); onClose(); }}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary"
+            aria-label="Close reader"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <div className="text-center">
+            <p className="font-display text-sm font-semibold text-ink truncate max-w-[180px]">
+              {book.title}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              Page {pageNum} / {totalPages} · {wpm} wpm
+            </p>
+          </div>
+          <div className="w-9" />
         </div>
-        <div className="w-9" />
-      </div>
+      )}
 
-      {/* Mode toggle */}
-      <div className="px-4 pt-4">
-        <Tabs
-          value={settings.mode}
-          onValueChange={(v) => update("mode", v as Settings["mode"])}
-        >
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="rsvp">Flash</TabsTrigger>
-            <TabsTrigger value="chunk">Highlight</TabsTrigger>
-            <TabsTrigger value="bionic">Bionic</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
+      {/* Mode toggle — hidden in immersive */}
+      {!immersive && (
+        <div className="px-4 pt-4">
+          <Tabs
+            value={settings.mode}
+            onValueChange={(v) => update("mode", v as Settings["mode"])}
+          >
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="rsvp">Flash</TabsTrigger>
+              <TabsTrigger value="chunk">Highlight</TabsTrigger>
+              <TabsTrigger value="bionic">Bionic</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+      )}
 
-      {/* Reader stage */}
-      <div className="flex flex-1 items-center justify-center overflow-y-auto px-6 py-4">
+      {/* Reader stage — expands to fill screen in Highlight/Bionic */}
+      <div
+        className={[
+          "flex flex-1 overflow-y-auto",
+          settings.mode === "rsvp"
+            ? "items-center justify-center px-6 py-4"
+            : "items-start justify-center px-5 sm:px-8 py-6",
+        ].join(" ")}
+      >
         {settings.mode === "rsvp" ? (
           <RsvpStage word={word} />
         ) : settings.mode === "bionic" ? (
@@ -241,157 +279,134 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
         )}
       </div>
 
-      {/* Seek slider (drag to any position) */}
-      <div className="space-y-1.5 px-6">
-        <Slider
-          value={[idx]}
-          min={0}
-          max={Math.max(1, book.words.length - 1)}
-          step={1}
-          onValueChange={([v]) => seekTo(v)}
-          aria-label="Seek position"
-        />
-        <div className="flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">
-          <span>Page {pageNum} of {totalPages}</span>
-          <span>{Math.round((idx / Math.max(1, book.words.length - 1)) * 100)}%</span>
-        </div>
-      </div>
+      {/* Floating pause button — only visible in immersive mode */}
+      {immersive && (
+        <>
+          <button
+            onClick={handlePlayClick}
+            aria-label="Pause"
+            className="fixed bottom-6 right-6 z-10 flex h-14 w-14 items-center justify-center rounded-full bg-ember/90 text-ember-foreground shadow-lg backdrop-blur transition-colors hover:bg-ember"
+          >
+            <Pause className="h-6 w-6" />
+          </button>
+          <button
+            onClick={() => { flushRecord(); releaseWakeLock(); onClose(); }}
+            aria-label="Close reader"
+            className="fixed top-4 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-background/70 text-muted-foreground shadow backdrop-blur hover:bg-secondary"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </>
+      )}
 
-      {/* Controls */}
-      <div className="space-y-5 p-6 pt-4">
-        {/* Transport: page back · chunk back · play · chunk fwd · page fwd · restart */}
-        <div className="flex items-center justify-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => step(-WORDS_PER_PAGE)}
-            aria-label="Back one page"
-            title="Back one page"
-          >
-            <ChevronsLeft className="h-5 w-5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => step(-chunkSize)}
-            aria-label="Back"
-            title={`Back ${chunkSize} word${chunkSize > 1 ? "s" : ""}`}
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-          <Button
-            size="lg"
-            onClick={() => {
-              if (playing) flushRecord();
-              setPlaying((p) => !p);
-              lastTickRef.current = 0;
-              if (!playing && !startedAtRef.current) startedAtRef.current = Date.now();
-            }}
-            className="h-14 w-14 rounded-full bg-ember p-0 text-ember-foreground hover:bg-ember/90"
-          >
-            {playing ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6 translate-x-0.5" />}
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => step(chunkSize)}
-            aria-label="Forward"
-            title={`Forward ${chunkSize} word${chunkSize > 1 ? "s" : ""}`}
-          >
-            <ChevronRight className="h-5 w-5" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => step(WORDS_PER_PAGE)}
-            aria-label="Forward one page"
-            title="Forward one page"
-          >
-            <ChevronsRight className="h-5 w-5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              startedAtRef.current = null;
-              lastTickRef.current = 0;
-            }}
-            aria-label="Restart ramp"
-            title="Restart speed ramp"
-          >
-            <RotateCcw className="h-5 w-5" />
-          </Button>
-        </div>
-
-        {/* Jump-to-page */}
-        <form
-          className="flex items-center justify-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const n = parseInt(pageInput, 10);
-            if (Number.isFinite(n)) {
-              jumpToPage(n);
-              setPageInput("");
-            }
-          }}
-        >
-          <label className="text-xs text-muted-foreground">Jump to page</label>
-          <Input
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={totalPages}
-            value={pageInput}
-            onChange={(e) => setPageInput(e.target.value)}
-            placeholder={String(pageNum)}
-            className="h-8 w-20 text-center"
-          />
-          <Button type="submit" size="sm" variant="outline" className="h-8 gap-1">
-            <CornerDownRight className="h-3.5 w-3.5" /> Go
-          </Button>
-        </form>
-
-        <div className="space-y-4 rounded-2xl border border-border bg-card/60 p-4">
-          <SliderRow
-            label="Start"
-            value={settings.startWpm}
-            unit="wpm"
-            min={120} max={600} step={10}
-            onChange={(v) => update("startWpm", v)}
-          />
-          <SliderRow
-            label="Target"
-            value={settings.targetWpm}
-            unit="wpm"
-            min={150} max={900} step={10}
-            onChange={(v) => update("targetWpm", v)}
-          />
-          <SliderRow
-            label="Ramp"
-            value={settings.rampMinutes}
-            unit="min"
-            min={1} max={60} step={1}
-            onChange={(v) => update("rampMinutes", v)}
-          />
-          <SliderRow
-            label="Chunk"
-            value={settings.chunkSize}
-            unit="words"
-            min={1} max={6} step={1}
-            onChange={(v) => update("chunkSize", v)}
-            hint={settings.mode === "rsvp" ? "Used in Highlight/Bionic mode" : undefined}
-          />
-          {settings.mode === "bionic" && (
-            <SliderRow
-              label="Bionic bold"
-              value={settings.bionicBoldPct}
-              unit="%"
-              min={20} max={60} step={5}
-              onChange={(v) => update("bionicBoldPct", v)}
+      {/* Seek slider + controls — hidden in immersive */}
+      {!immersive && (
+        <>
+          <div className="space-y-1.5 px-6">
+            <Slider
+              value={[idx]}
+              min={0}
+              max={Math.max(1, book.words.length - 1)}
+              step={1}
+              onValueChange={([v]) => seekTo(v)}
+              aria-label="Seek position"
             />
-          )}
-        </div>
-      </div>
+            <div className="flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">
+              <span>Page {pageNum} of {totalPages}</span>
+              <span>{Math.round((idx / Math.max(1, book.words.length - 1)) * 100)}%</span>
+            </div>
+          </div>
+
+          <div className="space-y-5 p-6 pt-4">
+            {/* Transport */}
+            <div className="flex items-center justify-center gap-2">
+              <Button variant="outline" size="icon" onClick={() => step(-WORDS_PER_PAGE)} aria-label="Back one page">
+                <ChevronsLeft className="h-5 w-5" />
+              </Button>
+              <Button variant="outline" size="icon" onClick={() => step(-chunkSize)} aria-label="Back">
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+              <Button
+                size="lg"
+                onClick={handlePlayClick}
+                className="h-14 w-14 rounded-full bg-ember p-0 text-ember-foreground hover:bg-ember/90"
+              >
+                {playing ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6 translate-x-0.5" />}
+              </Button>
+              <Button variant="outline" size="icon" onClick={() => step(chunkSize)} aria-label="Forward">
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+              <Button variant="outline" size="icon" onClick={() => step(WORDS_PER_PAGE)} aria-label="Forward one page">
+                <ChevronsRight className="h-5 w-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => { startedAtRef.current = null; lastTickRef.current = 0; }}
+                aria-label="Restart ramp"
+                title="Restart speed ramp"
+              >
+                <RotateCcw className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Jump-to-page */}
+            <form
+              className="flex items-center justify-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const n = parseInt(pageInput, 10);
+                if (Number.isFinite(n)) { jumpToPage(n); setPageInput(""); }
+              }}
+            >
+              <label className="text-xs text-muted-foreground">Jump to page</label>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={totalPages}
+                value={pageInput}
+                onChange={(e) => setPageInput(e.target.value)}
+                placeholder={String(pageNum)}
+                className="h-8 w-20 text-center"
+              />
+              <Button type="submit" size="sm" variant="outline" className="h-8 gap-1">
+                <CornerDownRight className="h-3.5 w-3.5" /> Go
+              </Button>
+            </form>
+
+            {/* Collapsible settings */}
+            <div className="rounded-2xl border border-border bg-card/60">
+              <button
+                type="button"
+                onClick={() => setPanelOpen((o) => !o)}
+                className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-ink"
+              >
+                <span className="flex items-center gap-2">
+                  <Settings2 className="h-4 w-4" /> Reading settings
+                </span>
+                <span className="text-xs text-muted-foreground">{panelOpen ? "Hide" : "Show"}</span>
+              </button>
+              {panelOpen && (
+                <div className="space-y-4 border-t border-border/60 p-4">
+                  <SliderRow label="Start" value={settings.startWpm} unit="wpm" min={120} max={600} step={10} onChange={(v) => update("startWpm", v)} />
+                  <SliderRow label="Target" value={settings.targetWpm} unit="wpm" min={150} max={900} step={10} onChange={(v) => update("targetWpm", v)} />
+                  <SliderRow label="Ramp" value={settings.rampMinutes} unit="min" min={1} max={60} step={1} onChange={(v) => update("rampMinutes", v)} />
+                  <SliderRow
+                    label="Chunk" value={settings.chunkSize} unit="words"
+                    min={1} max={6} step={1}
+                    onChange={(v) => update("chunkSize", v)}
+                    hint={settings.mode === "rsvp" ? "Used in Highlight/Bionic mode" : undefined}
+                  />
+                  {settings.mode === "bionic" && (
+                    <SliderRow label="Bionic bold" value={settings.bionicBoldPct} unit="%" min={20} max={60} step={5} onChange={(v) => update("bionicBoldPct", v)} />
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -415,11 +430,7 @@ function SliderRow({
           {value} <span className="text-xs">{unit}</span>
         </span>
       </div>
-      <Slider
-        value={[value]}
-        min={min} max={max} step={step}
-        onValueChange={([v]) => onChange(v)}
-      />
+      <Slider value={[value]} min={min} max={max} step={step} onValueChange={([v]) => onChange(v)} />
     </div>
   );
 }
@@ -444,14 +455,11 @@ function RsvpStage({ word }: { word: string }) {
   );
 }
 
-// Highlight mode — layout-stable: every word gets identical box (padding,
-// border-radius, transparent background). Only the background color changes
-// when a word becomes active, so surrounding text never shifts.
 function ChunkStage({
   words, start, currentIdx, chunkSize,
 }: { words: string[]; start: number; currentIdx: number; chunkSize: number }) {
   return (
-    <p className="font-display text-xl leading-relaxed text-ink/80 max-w-prose">
+    <p className="font-display text-xl sm:text-2xl leading-relaxed text-ink/80 max-w-prose">
       {words.map((w, i) => {
         const abs = start + i;
         const active = abs >= currentIdx && abs < currentIdx + chunkSize;
@@ -461,11 +469,7 @@ function ChunkStage({
             key={i}
             className={[
               "rounded px-0.5 transition-colors",
-              active
-                ? "bg-ember/25 text-ink"
-                : past
-                ? "bg-transparent text-muted-foreground/60"
-                : "bg-transparent",
+              active ? "bg-ember/25 text-ink" : past ? "bg-transparent text-muted-foreground/60" : "bg-transparent",
             ].join(" ")}
           >
             {w}{" "}
@@ -476,8 +480,6 @@ function ChunkStage({
   );
 }
 
-// Bionic reading — bold the first N% of every word to guide the eye.
-// Layout-stable: identical padding/box on every word.
 function BionicStage({
   words, start, currentIdx, chunkSize, boldPct,
 }: {
@@ -485,12 +487,11 @@ function BionicStage({
 }) {
   const frac = Math.max(0.1, Math.min(0.9, boldPct / 100));
   return (
-    <p className="font-display text-xl leading-relaxed text-ink max-w-prose">
+    <p className="font-display text-xl sm:text-2xl leading-relaxed text-ink max-w-prose">
       {words.map((w, i) => {
         const abs = start + i;
         const active = abs >= currentIdx && abs < currentIdx + chunkSize;
         const past = abs < currentIdx;
-        // Split on the leading letter run so punctuation doesn't count toward bold length.
         const match = w.match(/^(\W*)(\w+)?([\s\S]*)$/);
         const lead = match?.[1] ?? "";
         const core = match?.[2] ?? "";
