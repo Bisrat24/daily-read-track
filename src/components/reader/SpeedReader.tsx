@@ -55,8 +55,13 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   useEffect(() => { onPositionRef.current = onPosition; }, [onPosition]);
   useEffect(() => { onPositionRef.current(idx); }, [idx]);
 
-  // --- Keep screen awake while the reader is mounted (Wake Lock API) ----------
+  // --- Screen Wake Lock: acquire ONLY while actively playing ------------------
   useEffect(() => {
+    if (!playing) {
+      try { wakeLockRef.current?.release?.(); } catch { /* ignore */ }
+      wakeLockRef.current = null;
+      return;
+    }
     let cancelled = false;
     async function request() {
       try {
@@ -64,7 +69,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
         if (!wl?.request) return;
         const lock = await wl.request("screen");
         if (cancelled) {
-          lock.release?.();
+          try { lock.release?.(); } catch { /* ignore */ }
           return;
         }
         wakeLockRef.current = lock;
@@ -72,12 +77,12 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
           wakeLockRef.current = null;
         });
       } catch {
-        /* user gesture or permission issue — ignore */
+        /* user gesture / permission — ignore */
       }
     }
     request();
     const onVis = () => {
-      if (document.visibilityState === "visible" && !wakeLockRef.current) request();
+      if (document.visibilityState === "visible" && playing && !wakeLockRef.current) request();
     };
     document.addEventListener("visibilitychange", onVis);
     return () => {
@@ -86,7 +91,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
       try { wakeLockRef.current?.release?.(); } catch { /* ignore */ }
       wakeLockRef.current = null;
     };
-  }, []);
+  }, [playing]);
 
   function currentWpm() {
     const { startWpm, targetWpm, rampMinutes } = settings;
@@ -154,7 +159,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
   const chunkWindow = useMemo(() => {
     if (settings.mode === "rsvp") return null;
-    const windowSize = 60;
+    const windowSize = settings.mode === "bionic" ? 120 : 60;
     const start = Math.max(0, idx - 25);
     const end = Math.min(book.words.length, start + windowSize);
     const slice = book.words.slice(start, end);
@@ -169,6 +174,12 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
   function step(delta: number) {
     setIdx((i) => Math.max(0, Math.min(book.words.length - 1, i + delta)));
+    lastTickRef.current = 0;
+  }
+
+  function seekTo(wordIndex: number) {
+    const clamped = Math.max(0, Math.min(book.words.length - 1, Math.floor(wordIndex)));
+    setIdx(clamped);
     lastTickRef.current = 0;
   }
 
@@ -200,17 +211,26 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
           value={settings.mode}
           onValueChange={(v) => update("mode", v as Settings["mode"])}
         >
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="rsvp">Flash (RSVP)</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="rsvp">Flash</TabsTrigger>
             <TabsTrigger value="chunk">Highlight</TabsTrigger>
+            <TabsTrigger value="bionic">Bionic</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
 
       {/* Reader stage */}
-      <div className="flex flex-1 items-center justify-center px-6">
+      <div className="flex flex-1 items-center justify-center overflow-y-auto px-6 py-4">
         {settings.mode === "rsvp" ? (
           <RsvpStage word={word} />
+        ) : settings.mode === "bionic" ? (
+          <BionicStage
+            words={chunkWindow!.slice}
+            start={chunkWindow!.start}
+            currentIdx={idx}
+            chunkSize={chunkSize}
+            boldPct={settings.bionicBoldPct}
+          />
         ) : (
           <ChunkStage
             words={chunkWindow!.slice}
@@ -221,13 +241,19 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
         )}
       </div>
 
-      {/* Progress */}
-      <div className="px-6">
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-          <div
-            className="h-full bg-ember transition-[width] duration-200"
-            style={{ width: `${(idx / Math.max(1, book.words.length - 1)) * 100}%` }}
-          />
+      {/* Seek slider (drag to any position) */}
+      <div className="space-y-1.5 px-6">
+        <Slider
+          value={[idx]}
+          min={0}
+          max={Math.max(1, book.words.length - 1)}
+          step={1}
+          onValueChange={([v]) => seekTo(v)}
+          aria-label="Seek position"
+        />
+        <div className="flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">
+          <span>Page {pageNum} of {totalPages}</span>
+          <span>{Math.round((idx / Math.max(1, book.words.length - 1)) * 100)}%</span>
         </div>
       </div>
 
@@ -353,8 +379,17 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             unit="words"
             min={1} max={6} step={1}
             onChange={(v) => update("chunkSize", v)}
-            hint={settings.mode === "rsvp" ? "Used in Highlight mode" : undefined}
+            hint={settings.mode === "rsvp" ? "Used in Highlight/Bionic mode" : undefined}
           />
+          {settings.mode === "bionic" && (
+            <SliderRow
+              label="Bionic bold"
+              value={settings.bionicBoldPct}
+              unit="%"
+              min={20} max={60} step={5}
+              onChange={(v) => update("bionicBoldPct", v)}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -409,6 +444,9 @@ function RsvpStage({ word }: { word: string }) {
   );
 }
 
+// Highlight mode — layout-stable: every word gets identical box (padding,
+// border-radius, transparent background). Only the background color changes
+// when a word becomes active, so surrounding text never shifts.
 function ChunkStage({
   words, start, currentIdx, chunkSize,
 }: { words: string[]; start: number; currentIdx: number; chunkSize: number }) {
@@ -417,18 +455,61 @@ function ChunkStage({
       {words.map((w, i) => {
         const abs = start + i;
         const active = abs >= currentIdx && abs < currentIdx + chunkSize;
+        const past = abs < currentIdx;
         return (
           <span
             key={i}
-            className={
+            className={[
+              "rounded px-0.5 transition-colors",
               active
-                ? "rounded bg-ember/25 px-0.5 text-ink"
-                : abs < currentIdx
-                ? "text-muted-foreground/60"
-                : ""
-            }
+                ? "bg-ember/25 text-ink"
+                : past
+                ? "bg-transparent text-muted-foreground/60"
+                : "bg-transparent",
+            ].join(" ")}
           >
             {w}{" "}
+          </span>
+        );
+      })}
+    </p>
+  );
+}
+
+// Bionic reading — bold the first N% of every word to guide the eye.
+// Layout-stable: identical padding/box on every word.
+function BionicStage({
+  words, start, currentIdx, chunkSize, boldPct,
+}: {
+  words: string[]; start: number; currentIdx: number; chunkSize: number; boldPct: number;
+}) {
+  const frac = Math.max(0.1, Math.min(0.9, boldPct / 100));
+  return (
+    <p className="font-display text-xl leading-relaxed text-ink max-w-prose">
+      {words.map((w, i) => {
+        const abs = start + i;
+        const active = abs >= currentIdx && abs < currentIdx + chunkSize;
+        const past = abs < currentIdx;
+        // Split on the leading letter run so punctuation doesn't count toward bold length.
+        const match = w.match(/^(\W*)(\w+)?([\s\S]*)$/);
+        const lead = match?.[1] ?? "";
+        const core = match?.[2] ?? "";
+        const tail = match?.[3] ?? "";
+        const boldLen = core ? Math.max(1, Math.ceil(core.length * frac)) : 0;
+        const boldPart = core.slice(0, boldLen);
+        const restPart = core.slice(boldLen);
+        return (
+          <span
+            key={i}
+            className={[
+              "rounded px-0.5 transition-colors",
+              active ? "bg-ember/25" : past ? "text-muted-foreground/70" : "",
+            ].join(" ")}
+          >
+            {lead}
+            <span className="font-bold text-ink">{boldPart}</span>
+            <span>{restPart}</span>
+            {tail}{" "}
           </span>
         );
       })}
