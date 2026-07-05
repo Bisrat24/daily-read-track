@@ -19,8 +19,9 @@ export type Settings = {
   startWpm: number;
   targetWpm: number;
   rampMinutes: number; // time to ramp from start to target
-  mode: "rsvp" | "chunk";
+  mode: "rsvp" | "chunk" | "bionic";
   chunkSize: number; // words shown together in chunk mode
+  bionicBoldPct: number; // 30-40 typical; fraction of each word bolded
 };
 
 export const defaultSettings: Settings = {
@@ -29,6 +30,7 @@ export const defaultSettings: Settings = {
   rampMinutes: 15,
   mode: "rsvp",
   chunkSize: 3,
+  bionicBoldPct: 40,
 };
 
 function isBrowser() {
