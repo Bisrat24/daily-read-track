@@ -259,11 +259,12 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
       {/* Reader stage — expands to fill screen in Highlight/Bionic */}
       <div
+        ref={scrollRef}
         className={[
           "flex flex-1 overflow-y-auto",
           settings.mode === "rsvp"
             ? "items-center justify-center px-6 py-4"
-            : "items-start justify-center px-5 sm:px-8 py-6",
+            : "flex-col items-stretch px-5 sm:px-8 py-6",
         ].join(" ")}
       >
         {settings.mode === "rsvp" ? (
@@ -275,6 +276,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             currentIdx={idx}
             chunkSize={chunkSize}
             boldPct={settings.bionicBoldPct}
+            activeRef={activeWordRef}
           />
         ) : (
           <ChunkStage
@@ -282,6 +284,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             start={chunkWindow!.start}
             currentIdx={idx}
             chunkSize={chunkSize}
+            activeRef={activeWordRef}
           />
         )}
       </div>
