@@ -41,6 +41,18 @@ function focusIndex(word: string) {
   return 3;
 }
 
+// Rough syllable count — good enough for pacing heuristics.
+function countSyllables(word: string): number {
+  const w = word.toLowerCase().replace(/[^a-z]/g, "");
+  if (!w) return 0;
+  if (w.length <= 3) return 1;
+  const cleaned = w
+    .replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, "")
+    .replace(/^y/, "");
+  const groups = cleaned.match(/[aeiouy]{1,2}/g);
+  return groups ? groups.length : 1;
+}
+
 export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [playing, setPlaying] = useState(false);
