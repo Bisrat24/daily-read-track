@@ -498,19 +498,21 @@ function ChunkStage({
 }
 
 function BionicStage({
-  words, start, currentIdx, chunkSize, boldPct,
+  words, start, currentIdx, chunkSize, boldPct, activeRef,
 }: {
   words: string[]; start: number; currentIdx: number; chunkSize: number; boldPct: number;
+  activeRef: React.MutableRefObject<HTMLSpanElement | null>;
 }) {
   // Long words: 40–50% of letters (slider-controlled). Short words (<4): 1 letter.
   const frac = Math.max(0.4, Math.min(0.5, boldPct / 100));
   return (
     <p
-      className="font-display text-xl sm:text-2xl leading-relaxed text-ink max-w-prose"
+      className="font-display text-left text-xl sm:text-2xl leading-relaxed text-ink w-full max-w-prose mx-auto"
       style={{ fontVariantLigatures: "none", fontKerning: "none" }}
     >
       {words.map((w, i) => {
         const abs = start + i;
+        const isFirstActive = abs === currentIdx;
         const active = abs >= currentIdx && abs < currentIdx + chunkSize;
         const past = abs < currentIdx;
         const match = w.match(/^(\W*)(\w+)?([\s\S]*)$/);
@@ -527,6 +529,7 @@ function BionicStage({
         return (
           <span
             key={i}
+            ref={isFirstActive ? activeRef : undefined}
             className={[
               "rounded px-0.5 transition-colors",
               active ? "bg-ember/25" : past ? "text-muted-foreground/70" : "",
