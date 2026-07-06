@@ -53,6 +53,8 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   // Persistent wake lock sentinel — never cleared by re-renders/timer updates.
   const wakeLockRef = useRef<any>(null);
   const wakeLockWantedRef = useRef(false);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const activeWordRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => setSettings(loadSettings()), []);
   const onPositionRef = useRef(onPosition);
