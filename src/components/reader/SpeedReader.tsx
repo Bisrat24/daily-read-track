@@ -468,17 +468,22 @@ function RsvpStage({ word }: { word: string }) {
 }
 
 function ChunkStage({
-  words, start, currentIdx, chunkSize,
-}: { words: string[]; start: number; currentIdx: number; chunkSize: number }) {
+  words, start, currentIdx, chunkSize, activeRef,
+}: {
+  words: string[]; start: number; currentIdx: number; chunkSize: number;
+  activeRef: React.MutableRefObject<HTMLSpanElement | null>;
+}) {
   return (
-    <p className="font-display text-xl sm:text-2xl leading-relaxed text-ink/80 max-w-prose">
+    <p className="font-display text-left text-xl sm:text-2xl leading-relaxed text-ink/80 w-full max-w-prose mx-auto">
       {words.map((w, i) => {
         const abs = start + i;
+        const isFirstActive = abs === currentIdx;
         const active = abs >= currentIdx && abs < currentIdx + chunkSize;
         const past = abs < currentIdx;
         return (
           <span
             key={i}
+            ref={isFirstActive ? activeRef : undefined}
             className={[
               "rounded px-0.5 transition-colors",
               active ? "bg-ember/25 text-ink" : past ? "bg-transparent text-muted-foreground/60" : "bg-transparent",
