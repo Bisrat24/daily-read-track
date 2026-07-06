@@ -178,6 +178,16 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     }
   }, [idx, settings.mode, windowStart]);
 
+  // Smoothly keep the active word near the upper-third of the reader viewport.
+  useEffect(() => {
+    if (settings.mode === "rsvp") return;
+    const container = scrollRef.current;
+    const el = activeWordRef.current;
+    if (!container || !el) return;
+    const target = el.offsetTop - container.clientHeight * 0.32;
+    container.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+  }, [idx, settings.mode]);
+
   const chunkWindow = useMemo(() => {
     if (settings.mode === "rsvp") return null;
     const end = Math.min(book.words.length, windowStart + WINDOW_SIZE);
