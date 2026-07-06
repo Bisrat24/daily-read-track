@@ -167,14 +167,21 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const pageNum = Math.floor(idx / WORDS_PER_PAGE) + 1;
   const totalPages = Math.max(1, Math.ceil(book.words.length / WORDS_PER_PAGE));
 
+  const WINDOW_SIZE = 1200;
+  const [windowStart, setWindowStart] = useState(() => Math.max(0, position - 200));
+  useEffect(() => {
+    if (settings.mode === "rsvp") return;
+    if (idx < windowStart + 100 || idx > windowStart + WINDOW_SIZE - 200) {
+      setWindowStart(Math.max(0, idx - 200));
+    }
+  }, [idx, settings.mode, windowStart]);
+
   const chunkWindow = useMemo(() => {
     if (settings.mode === "rsvp") return null;
-    const windowSize = settings.mode === "bionic" ? 120 : 60;
-    const start = Math.max(0, idx - 25);
-    const end = Math.min(book.words.length, start + windowSize);
-    const slice = book.words.slice(start, end);
-    return { start, end, slice };
-  }, [idx, settings.mode, book.words]);
+    const end = Math.min(book.words.length, windowStart + WINDOW_SIZE);
+    const slice = book.words.slice(windowStart, end);
+    return { start: windowStart, end, slice };
+  }, [windowStart, settings.mode, book.words]);
 
   function jumpToPage(p: number) {
     const clamped = Math.max(1, Math.min(totalPages, Math.floor(p)));
