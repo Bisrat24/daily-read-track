@@ -580,7 +580,11 @@ function BionicStage({
             ref={isFirstActive ? activeRef : undefined}
             className={[
               "rounded px-0.5 transition-colors",
-              active ? "bg-ember/25" : past ? "text-muted-foreground/70" : "",
+              active
+                ? "bg-ember/30 text-ink ring-1 ring-ember/50 shadow-[0_0_0_2px_rgba(0,0,0,0.02)]"
+                : past
+                ? "text-muted-foreground/70"
+                : "",
             ].join(" ")}
           >
             {lead}
