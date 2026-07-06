@@ -485,9 +485,13 @@ function BionicStage({
 }: {
   words: string[]; start: number; currentIdx: number; chunkSize: number; boldPct: number;
 }) {
-  const frac = Math.max(0.1, Math.min(0.9, boldPct / 100));
+  // Long words: 40–50% of letters (slider-controlled). Short words (<4): 1 letter.
+  const frac = Math.max(0.4, Math.min(0.5, boldPct / 100));
   return (
-    <p className="font-display text-xl sm:text-2xl leading-relaxed text-ink max-w-prose">
+    <p
+      className="font-display text-xl sm:text-2xl leading-relaxed text-ink max-w-prose"
+      style={{ fontVariantLigatures: "none", fontKerning: "none" }}
+    >
       {words.map((w, i) => {
         const abs = start + i;
         const active = abs >= currentIdx && abs < currentIdx + chunkSize;
@@ -496,7 +500,11 @@ function BionicStage({
         const lead = match?.[1] ?? "";
         const core = match?.[2] ?? "";
         const tail = match?.[3] ?? "";
-        const boldLen = core ? Math.max(1, Math.ceil(core.length * frac)) : 0;
+        const boldLen = core
+          ? core.length < 4
+            ? 1
+            : Math.max(1, Math.round(core.length * frac))
+          : 0;
         const boldPart = core.slice(0, boldLen);
         const restPart = core.slice(boldLen);
         return (
@@ -508,7 +516,7 @@ function BionicStage({
             ].join(" ")}
           >
             {lead}
-            <span className="font-bold text-ink">{boldPart}</span>
+            <strong className="font-bold text-ink">{boldPart}</strong>
             <span>{restPart}</span>
             {tail}{" "}
           </span>
