@@ -53,6 +53,8 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   // Persistent wake lock sentinel — never cleared by re-renders/timer updates.
   const wakeLockRef = useRef<any>(null);
   const wakeLockWantedRef = useRef(false);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const activeWordRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => setSettings(loadSettings()), []);
   const onPositionRef = useRef(onPosition);
@@ -167,14 +169,31 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const pageNum = Math.floor(idx / WORDS_PER_PAGE) + 1;
   const totalPages = Math.max(1, Math.ceil(book.words.length / WORDS_PER_PAGE));
 
+  const WINDOW_SIZE = 1200;
+  const [windowStart, setWindowStart] = useState(() => Math.max(0, position - 200));
+  useEffect(() => {
+    if (settings.mode === "rsvp") return;
+    if (idx < windowStart + 100 || idx > windowStart + WINDOW_SIZE - 200) {
+      setWindowStart(Math.max(0, idx - 200));
+    }
+  }, [idx, settings.mode, windowStart]);
+
+  // Smoothly keep the active word near the upper-third of the reader viewport.
+  useEffect(() => {
+    if (settings.mode === "rsvp") return;
+    const container = scrollRef.current;
+    const el = activeWordRef.current;
+    if (!container || !el) return;
+    const target = el.offsetTop - container.clientHeight * 0.32;
+    container.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+  }, [idx, settings.mode]);
+
   const chunkWindow = useMemo(() => {
     if (settings.mode === "rsvp") return null;
-    const windowSize = settings.mode === "bionic" ? 120 : 60;
-    const start = Math.max(0, idx - 25);
-    const end = Math.min(book.words.length, start + windowSize);
-    const slice = book.words.slice(start, end);
-    return { start, end, slice };
-  }, [idx, settings.mode, book.words]);
+    const end = Math.min(book.words.length, windowStart + WINDOW_SIZE);
+    const slice = book.words.slice(windowStart, end);
+    return { start: windowStart, end, slice };
+  }, [windowStart, settings.mode, book.words]);
 
   function jumpToPage(p: number) {
     const clamped = Math.max(1, Math.min(totalPages, Math.floor(p)));
@@ -252,11 +271,12 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
       {/* Reader stage — expands to fill screen in Highlight/Bionic */}
       <div
+        ref={scrollRef}
         className={[
           "flex flex-1 overflow-y-auto",
           settings.mode === "rsvp"
             ? "items-center justify-center px-6 py-4"
-            : "items-start justify-center px-5 sm:px-8 py-6",
+            : "flex-col items-stretch px-5 sm:px-8 py-6",
         ].join(" ")}
       >
         {settings.mode === "rsvp" ? (
@@ -268,6 +288,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             currentIdx={idx}
             chunkSize={chunkSize}
             boldPct={settings.bionicBoldPct}
+            activeRef={activeWordRef}
           />
         ) : (
           <ChunkStage
@@ -275,6 +296,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             start={chunkWindow!.start}
             currentIdx={idx}
             chunkSize={chunkSize}
+            activeRef={activeWordRef}
           />
         )}
       </div>
@@ -456,17 +478,22 @@ function RsvpStage({ word }: { word: string }) {
 }
 
 function ChunkStage({
-  words, start, currentIdx, chunkSize,
-}: { words: string[]; start: number; currentIdx: number; chunkSize: number }) {
+  words, start, currentIdx, chunkSize, activeRef,
+}: {
+  words: string[]; start: number; currentIdx: number; chunkSize: number;
+  activeRef: React.MutableRefObject<HTMLSpanElement | null>;
+}) {
   return (
-    <p className="font-display text-xl sm:text-2xl leading-relaxed text-ink/80 max-w-prose">
+    <p className="font-display text-left text-xl sm:text-2xl leading-relaxed text-ink/80 w-full max-w-prose mx-auto">
       {words.map((w, i) => {
         const abs = start + i;
+        const isFirstActive = abs === currentIdx;
         const active = abs >= currentIdx && abs < currentIdx + chunkSize;
         const past = abs < currentIdx;
         return (
           <span
             key={i}
+            ref={isFirstActive ? activeRef : undefined}
             className={[
               "rounded px-0.5 transition-colors",
               active ? "bg-ember/25 text-ink" : past ? "bg-transparent text-muted-foreground/60" : "bg-transparent",
@@ -481,19 +508,21 @@ function ChunkStage({
 }
 
 function BionicStage({
-  words, start, currentIdx, chunkSize, boldPct,
+  words, start, currentIdx, chunkSize, boldPct, activeRef,
 }: {
   words: string[]; start: number; currentIdx: number; chunkSize: number; boldPct: number;
+  activeRef: React.MutableRefObject<HTMLSpanElement | null>;
 }) {
   // Long words: 40–50% of letters (slider-controlled). Short words (<4): 1 letter.
   const frac = Math.max(0.4, Math.min(0.5, boldPct / 100));
   return (
     <p
-      className="font-display text-xl sm:text-2xl leading-relaxed text-ink max-w-prose"
+      className="font-display text-left text-xl sm:text-2xl leading-relaxed text-ink w-full max-w-prose mx-auto"
       style={{ fontVariantLigatures: "none", fontKerning: "none" }}
     >
       {words.map((w, i) => {
         const abs = start + i;
+        const isFirstActive = abs === currentIdx;
         const active = abs >= currentIdx && abs < currentIdx + chunkSize;
         const past = abs < currentIdx;
         const match = w.match(/^(\W*)(\w+)?([\s\S]*)$/);
@@ -510,6 +539,7 @@ function BionicStage({
         return (
           <span
             key={i}
+            ref={isFirstActive ? activeRef : undefined}
             className={[
               "rounded px-0.5 transition-colors",
               active ? "bg-ember/25" : past ? "text-muted-foreground/70" : "",
