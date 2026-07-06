@@ -41,6 +41,18 @@ function focusIndex(word: string) {
   return 3;
 }
 
+// Rough syllable count — good enough for pacing heuristics.
+function countSyllables(word: string): number {
+  const w = word.toLowerCase().replace(/[^a-z]/g, "");
+  if (!w) return 0;
+  if (w.length <= 3) return 1;
+  const cleaned = w
+    .replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, "")
+    .replace(/^y/, "");
+  const groups = cleaned.match(/[aeiouy]{1,2}/g);
+  return groups ? groups.length : 1;
+}
+
 export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [playing, setPlaying] = useState(false);
@@ -116,6 +128,31 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
   const chunkSize = settings.mode === "rsvp" ? 1 : Math.max(1, settings.chunkSize);
 
+  // Dynamic pacing multiplier based on the current chunk's content:
+  // - trailing punctuation → natural cognitive pause
+  // - long / syllable-heavy words → extra dwell time
+  function pacingMultiplierFor(startIdx: number, size: number) {
+    let mult = 1;
+    for (let k = 0; k < size; k++) {
+      const w = book.words[startIdx + k];
+      if (!w) break;
+      // Trailing punctuation
+      const last = w.trim().slice(-1);
+      if (last === "." || last === "!" || last === "?") mult *= 1.7;
+      else if (last === ";" || last === ":") mult *= 1.45;
+      else if (last === ",") mult *= 1.25;
+
+      // Long / syllable-heavy words
+      const core = w.replace(/[^A-Za-z]/g, "");
+      if (core.length >= 10) mult *= 1.35;
+      else if (core.length >= 7) mult *= 1.15;
+      const syllables = countSyllables(core);
+      if (syllables >= 7) mult *= 1.4;
+      else if (syllables >= 6) mult *= 1.25;
+    }
+    return Math.min(mult, 3);
+  }
+
   useEffect(() => {
     if (!playing) return;
     if (!startedAtRef.current) startedAtRef.current = Date.now();
@@ -123,7 +160,8 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     const step = (t: number) => {
       const wpm = currentWpm();
       const msPerWord = 60_000 / Math.max(60, wpm);
-      const advanceMs = msPerWord * chunkSize;
+      const mult = pacingMultiplierFor(idx, chunkSize);
+      const advanceMs = msPerWord * chunkSize * mult;
       if (!lastTickRef.current) lastTickRef.current = t;
       if (t - lastTickRef.current >= advanceMs) {
         lastTickRef.current = t;
@@ -144,7 +182,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, chunkSize, settings.startWpm, settings.targetWpm, settings.rampMinutes, book.words.length]);
+  }, [playing, chunkSize, idx, settings.startWpm, settings.targetWpm, settings.rampMinutes, book.words.length]);
 
   function flushRecord() {
     if (wordsSinceRecordRef.current > 0) {
@@ -542,7 +580,11 @@ function BionicStage({
             ref={isFirstActive ? activeRef : undefined}
             className={[
               "rounded px-0.5 transition-colors",
-              active ? "bg-ember/25" : past ? "text-muted-foreground/70" : "",
+              active
+                ? "bg-ember/30 text-ink ring-1 ring-ember/50 shadow-[0_0_0_2px_rgba(0,0,0,0.02)]"
+                : past
+                ? "text-muted-foreground/70"
+                : "",
             ].join(" ")}
           >
             {lead}
