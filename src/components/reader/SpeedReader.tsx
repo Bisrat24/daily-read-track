@@ -116,6 +116,31 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
   const chunkSize = settings.mode === "rsvp" ? 1 : Math.max(1, settings.chunkSize);
 
+  // Dynamic pacing multiplier based on the current chunk's content:
+  // - trailing punctuation → natural cognitive pause
+  // - long / syllable-heavy words → extra dwell time
+  function pacingMultiplierFor(startIdx: number, size: number) {
+    let mult = 1;
+    for (let k = 0; k < size; k++) {
+      const w = book.words[startIdx + k];
+      if (!w) break;
+      // Trailing punctuation
+      const last = w.trim().slice(-1);
+      if (last === "." || last === "!" || last === "?") mult *= 1.7;
+      else if (last === ";" || last === ":") mult *= 1.45;
+      else if (last === ",") mult *= 1.25;
+
+      // Long / syllable-heavy words
+      const core = w.replace(/[^A-Za-z]/g, "");
+      if (core.length >= 10) mult *= 1.35;
+      else if (core.length >= 7) mult *= 1.15;
+      const syllables = countSyllables(core);
+      if (syllables >= 7) mult *= 1.4;
+      else if (syllables >= 6) mult *= 1.25;
+    }
+    return Math.min(mult, 3);
+  }
+
   useEffect(() => {
     if (!playing) return;
     if (!startedAtRef.current) startedAtRef.current = Date.now();
@@ -123,7 +148,8 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     const step = (t: number) => {
       const wpm = currentWpm();
       const msPerWord = 60_000 / Math.max(60, wpm);
-      const advanceMs = msPerWord * chunkSize;
+      const mult = pacingMultiplierFor(idx, chunkSize);
+      const advanceMs = msPerWord * chunkSize * mult;
       if (!lastTickRef.current) lastTickRef.current = t;
       if (t - lastTickRef.current >= advanceMs) {
         lastTickRef.current = t;
@@ -144,7 +170,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, chunkSize, settings.startWpm, settings.targetWpm, settings.rampMinutes, book.words.length]);
+  }, [playing, chunkSize, idx, settings.startWpm, settings.targetWpm, settings.rampMinutes, book.words.length]);
 
   function flushRecord() {
     if (wordsSinceRecordRef.current > 0) {
