@@ -150,19 +150,23 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     for (let k = 0; k < size; k++) {
       const w = book.words[startIdx + k];
       if (!w) break;
-      // Trailing punctuation
-      const last = w.trim().slice(-1);
-      if (last === "." || last === "!" || last === "?") mult *= 1.7;
-      else if (last === ";" || last === ":") mult *= 1.45;
-      else if (last === ",") mult *= 1.25;
+      // Collapse trailing punctuation cluster (e.g. "......" or "?!") into a
+      // single representative mark so ellipses don't compound multipliers.
+      const trailMatch = w.trim().match(/[.!?;:,]+$/);
+      if (trailMatch) {
+        const unique = new Set(trailMatch[0].split(""));
+        if (unique.has(".") || unique.has("!") || unique.has("?")) mult *= 1.3;
+        else if (unique.has(";") || unique.has(":")) mult *= 1.2;
+        else if (unique.has(",")) mult *= 1.1;
+      }
 
       // Long / syllable-heavy words
       const core = w.replace(/[^A-Za-z]/g, "");
       if (core.length >= 10) mult *= 1.35;
       else if (core.length >= 7) mult *= 1.15;
       const syllables = countSyllables(core);
-      if (syllables >= 7) mult *= 1.4;
-      else if (syllables >= 6) mult *= 1.25;
+      if (syllables >= 7) mult *= 1.1;
+      else if (syllables >= 6) mult *= 1.05;
     }
     return Math.min(mult, 3);
   }
