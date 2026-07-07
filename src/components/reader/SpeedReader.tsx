@@ -582,6 +582,12 @@ function BionicStage({
           : 0;
         const boldPart = core.slice(0, boldLen);
         const restPart = core.slice(boldLen);
+        // Future (unread) text is heavily dimmed; past text is muted; active is bright.
+        const dimClass = active
+          ? "text-ink"
+          : past
+          ? "text-muted-foreground/60"
+          : "text-muted-foreground/35";
         return (
           <span
             key={i}
@@ -595,10 +601,13 @@ function BionicStage({
                 : "",
             ].join(" ")}
           >
-            {lead}
-            <strong className="font-bold text-ink">{boldPart}</strong>
-            <span>{restPart}</span>
-            {tail}{" "}
+            {lead && <span className={dimClass}>{lead}</span>}
+            {boldPart && (
+              <strong className="font-bold text-ink">{boldPart}</strong>
+            )}
+            {restPart && <span className={dimClass}>{restPart}</span>}
+            {tail && <span className={dimClass}>{tail}</span>}
+            {" "}
           </span>
         );
       })}
