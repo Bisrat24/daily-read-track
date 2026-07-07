@@ -102,11 +102,16 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     wakeLockRef.current = null;
   }, []);
 
-  // Re-acquire when returning from background (browsers auto-release on hide).
+  // Auto-pause when hidden and re-acquire wake lock when visible again.
   useEffect(() => {
     const onVis = () => {
-      if (
-        document.visibilityState === "visible" &&
+      if (document.visibilityState === "hidden") {
+        if (playingRef.current) {
+          flushRecord();
+          releaseWakeLock();
+          setPlaying(false);
+        }
+      } else if (
         wakeLockWantedRef.current &&
         !wakeLockRef.current
       ) {
