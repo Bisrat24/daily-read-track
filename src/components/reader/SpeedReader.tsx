@@ -60,6 +60,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const [idx, setIdx] = useState(position);
   const [pageInput, setPageInput] = useState("");
   const [panelOpen, setPanelOpen] = useState(true);
+  const [wakeLockActive, setWakeLockActive] = useState(false);
   const startedAtRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(0);
   const wordsSinceRecordRef = useRef(0);
@@ -83,21 +84,20 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   // while playing, so timer/slider re-renders can't drop the lock.
   const acquireWakeLock = useCallback(async () => {
     wakeLockWantedRef.current = true;
-    // YouTube-style fallback: hidden looping <video> + Media Session metadata.
-    // Runs alongside the native Wake Lock API so browsers that don't support
-    // or grant it (Opera, some Android WebViews) still keep the screen awake.
     startMediaWakeLock({ title: book.title || "Speed Reader", artist: "Pace" });
+    setWakeLockActive(true);
     try {
       const wl: any = (navigator as any).wakeLock;
       if (!wl?.request) return;
-      if (wakeLockRef.current) return; // already held
+      if (wakeLockRef.current) return;
       const lock = await wl.request("screen");
       wakeLockRef.current = lock;
       lock.addEventListener?.("release", () => {
         wakeLockRef.current = null;
+        if (!wakeLockWantedRef.current) setWakeLockActive(false);
       });
     } catch {
-      /* ignore — permission/gesture rejection */
+      /* ignore */
     }
   }, [book.title]);
 
@@ -106,6 +106,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     stopMediaWakeLock();
     try { wakeLockRef.current?.release?.(); } catch { /* ignore */ }
     wakeLockRef.current = null;
+    setWakeLockActive(false);
   }, []);
 
   // Auto-pause when hidden and re-acquire wake lock when visible again.
@@ -150,19 +151,23 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     for (let k = 0; k < size; k++) {
       const w = book.words[startIdx + k];
       if (!w) break;
-      // Trailing punctuation
-      const last = w.trim().slice(-1);
-      if (last === "." || last === "!" || last === "?") mult *= 1.7;
-      else if (last === ";" || last === ":") mult *= 1.45;
-      else if (last === ",") mult *= 1.25;
+      // Collapse trailing punctuation cluster (e.g. "......" or "?!") into a
+      // single representative mark so ellipses don't compound multipliers.
+      const trailMatch = w.trim().match(/[.!?;:,]+$/);
+      if (trailMatch) {
+        const unique = new Set(trailMatch[0].split(""));
+        if (unique.has(".") || unique.has("!") || unique.has("?")) mult *= 1.3;
+        else if (unique.has(";") || unique.has(":")) mult *= 1.2;
+        else if (unique.has(",")) mult *= 1.1;
+      }
 
       // Long / syllable-heavy words
       const core = w.replace(/[^A-Za-z]/g, "");
       if (core.length >= 10) mult *= 1.35;
       else if (core.length >= 7) mult *= 1.15;
       const syllables = countSyllables(core);
-      if (syllables >= 7) mult *= 1.4;
-      else if (syllables >= 6) mult *= 1.25;
+      if (syllables >= 7) mult *= 1.1;
+      else if (syllables >= 6) mult *= 1.05;
     }
     return Math.min(mult, 3);
   }
@@ -301,8 +306,16 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             <p className="font-display text-sm font-semibold text-ink truncate max-w-[180px]">
               {book.title}
             </p>
-            <p className="text-[11px] text-muted-foreground">
-              Page {pageNum} / {totalPages} · {wpm} wpm
+            <p className="text-[11px] text-muted-foreground flex items-center justify-center gap-1.5">
+              <span>Page {pageNum} / {totalPages} · {wpm} wpm</span>
+              <span
+                title={wakeLockActive ? "Screen wake lock active" : "Wake lock idle"}
+                aria-label={wakeLockActive ? "Wake lock on" : "Wake lock off"}
+                className={[
+                  "inline-block h-1.5 w-1.5 rounded-full",
+                  wakeLockActive ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" : "bg-muted-foreground/40",
+                ].join(" ")}
+              />
             </p>
           </div>
           <div className="w-9" />
