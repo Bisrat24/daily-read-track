@@ -60,6 +60,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const [idx, setIdx] = useState(position);
   const [pageInput, setPageInput] = useState("");
   const [panelOpen, setPanelOpen] = useState(true);
+  const [wakeLockActive, setWakeLockActive] = useState(false);
   const startedAtRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(0);
   const wordsSinceRecordRef = useRef(0);
