@@ -262,6 +262,10 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   function handlePlayClick() {
     const nextPlaying = !playing;
     if (nextPlaying) {
+      // Rollback a few words on resume so the reader regains context.
+      const wpmNow = currentWpm();
+      const rollback = Math.max(10, Math.round(wpmNow / 30));
+      setIdx((i) => Math.max(0, i - rollback));
       // Fire-and-forget INSIDE the click event to satisfy Opera's gesture check.
       acquireWakeLock();
       if (!startedAtRef.current) startedAtRef.current = Date.now();
