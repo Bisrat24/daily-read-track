@@ -83,6 +83,10 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   // while playing, so timer/slider re-renders can't drop the lock.
   const acquireWakeLock = useCallback(async () => {
     wakeLockWantedRef.current = true;
+    // YouTube-style fallback: hidden looping <video> + Media Session metadata.
+    // Runs alongside the native Wake Lock API so browsers that don't support
+    // or grant it (Opera, some Android WebViews) still keep the screen awake.
+    startMediaWakeLock({ title: book.title || "Speed Reader", artist: "Pace" });
     try {
       const wl: any = (navigator as any).wakeLock;
       if (!wl?.request) return;
@@ -95,10 +99,11 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     } catch {
       /* ignore — permission/gesture rejection */
     }
-  }, []);
+  }, [book.title]);
 
   const releaseWakeLock = useCallback(() => {
     wakeLockWantedRef.current = false;
+    stopMediaWakeLock();
     try { wakeLockRef.current?.release?.(); } catch { /* ignore */ }
     wakeLockRef.current = null;
   }, []);
