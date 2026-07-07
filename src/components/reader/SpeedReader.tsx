@@ -67,6 +67,9 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const wakeLockWantedRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const activeWordRef = useRef<HTMLSpanElement | null>(null);
+  // Track current playing state without subscribing visibility handler to re-renders.
+  const playingRef = useRef(playing);
+  useEffect(() => { playingRef.current = playing; }, [playing]);
 
   useEffect(() => setSettings(loadSettings()), []);
   const onPositionRef = useRef(onPosition);
@@ -99,11 +102,16 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     wakeLockRef.current = null;
   }, []);
 
-  // Re-acquire when returning from background (browsers auto-release on hide).
+  // Auto-pause when hidden and re-acquire wake lock when visible again.
   useEffect(() => {
     const onVis = () => {
-      if (
-        document.visibilityState === "visible" &&
+      if (document.visibilityState === "hidden") {
+        if (playingRef.current) {
+          flushRecord();
+          releaseWakeLock();
+          setPlaying(false);
+        }
+      } else if (
         wakeLockWantedRef.current &&
         !wakeLockRef.current
       ) {
@@ -574,6 +582,12 @@ function BionicStage({
           : 0;
         const boldPart = core.slice(0, boldLen);
         const restPart = core.slice(boldLen);
+        // Future (unread) text is heavily dimmed; past text is muted; active is bright.
+        const dimClass = active
+          ? "text-ink"
+          : past
+          ? "text-muted-foreground/60"
+          : "text-muted-foreground/35";
         return (
           <span
             key={i}
@@ -587,10 +601,13 @@ function BionicStage({
                 : "",
             ].join(" ")}
           >
-            {lead}
-            <strong className="font-bold text-ink">{boldPart}</strong>
-            <span>{restPart}</span>
-            {tail}{" "}
+            {lead && <span className={dimClass}>{lead}</span>}
+            {boldPart && (
+              <strong className="font-bold text-ink">{boldPart}</strong>
+            )}
+            {restPart && <span className={dimClass}>{restPart}</span>}
+            {tail && <span className={dimClass}>{tail}</span>}
+            {" "}
           </span>
         );
       })}
