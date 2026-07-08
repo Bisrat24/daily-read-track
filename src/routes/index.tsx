@@ -1,87 +1,100 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { BookMarked, Sparkles, Play, Trash2, Sun, Moon } from "lucide-react";
+import { Sparkles, Sun, Moon, Plus } from "lucide-react";
 import { Uploader } from "@/components/reader/Uploader";
 import { SpeedReader } from "@/components/reader/SpeedReader";
 import { StatsBar } from "@/components/reader/StatsBar";
 import { ProgressCalendar } from "@/components/reader/ProgressCalendar";
-import { Button } from "@/components/ui/button";
+import { Library } from "@/components/reader/Library";
 import { Switch } from "@/components/ui/switch";
-import { BOOK_KEY, applyTheme, loadTheme, type Theme } from "@/lib/stats";
-import { idbDel, idbGet, idbSet } from "@/lib/idb";
+import { applyTheme, loadTheme, type Theme } from "@/lib/stats";
+import {
+  addBookToLibrary,
+  getActiveBookId,
+  getFullBook,
+  setActiveBookId,
+  updateBookPosition,
+} from "@/lib/library";
 import type { ParsedBook } from "@/lib/parsers";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Pace — Train your reading speed" },
-      { name: "description", content: "Upload a PDF or EPUB, start at your comfortable pace and ramp up. Track pages and words on a daily calendar." },
+      { name: "description", content: "Build a personal library of PDFs and EPUBs, then speed-read each one with its own tracked progress." },
       { property: "og:title", content: "Pace — Train your reading speed" },
-      { property: "og:description", content: "Upload a PDF or EPUB, start at your comfortable pace and ramp up. Track pages and words on a daily calendar." },
+      { property: "og:description", content: "Build a personal library of PDFs and EPUBs, then speed-read each one with its own tracked progress." },
     ],
   }),
   component: Index,
   ssr: false,
 });
 
-type SavedBook = { book: ParsedBook; position: number };
-
-async function loadSavedBook(): Promise<SavedBook | null> {
-  if (typeof window === "undefined") return null;
-  // Prefer IndexedDB; fall back to (and migrate from) localStorage.
-  const fromIdb = await idbGet<SavedBook>(BOOK_KEY);
-  if (fromIdb) return fromIdb;
-  try {
-    const raw = localStorage.getItem(BOOK_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as SavedBook;
-    await idbSet(BOOK_KEY, parsed);
-    localStorage.removeItem(BOOK_KEY);
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-async function saveSavedBook(s: SavedBook | null) {
-  if (typeof window === "undefined") return;
-  if (!s) {
-    await idbDel(BOOK_KEY);
-    try { localStorage.removeItem(BOOK_KEY); } catch { /* ignore */ }
-  } else {
-    await idbSet(BOOK_KEY, s);
-  }
-}
+type ActiveSession = {
+  id: string;
+  book: ParsedBook;
+  position: number;
+};
 
 function Index() {
-  const [saved, setSaved] = useState<SavedBook | null>(null);
+  const [active, setActive] = useState<ActiveSession | null>(null);
+  const [activeId, setActiveIdState] = useState<string | null>(null);
   const [reading, setReading] = useState(false);
+  const [showUploader, setShowUploader] = useState(false);
   const [theme, setTheme] = useState<Theme>("light");
+  const [ready, setReady] = useState(false);
 
+  // Bootstrap: restore theme + reopen last active book (metadata only, don't
+  // auto-start the reader).
   useEffect(() => {
-    loadSavedBook().then(setSaved);
     setTheme(loadTheme());
+    const id = getActiveBookId();
+    if (id) {
+      void getFullBook(id).then((res) => {
+        if (res) {
+          setActive({ id: res.meta.id, book: res.book, position: res.meta.position });
+          setActiveIdState(res.meta.id);
+        }
+        setReady(true);
+      });
+    } else {
+      setReady(true);
+    }
   }, []);
 
-  function onLoaded(book: ParsedBook) {
-    const s = { book, position: 0 };
-    setSaved(s);
-    void saveSavedBook(s);
-    setReading(true);
+  async function openBook(id: string, autoStart = true) {
+    // Persist the outgoing book's latest position before swapping.
+    if (active && active.id !== id) {
+      updateBookPosition(active.id, active.position);
+    }
+    const res = await getFullBook(id);
+    if (!res) return;
+    setActive({ id: res.meta.id, book: res.book, position: res.meta.position });
+    setActiveIdState(res.meta.id);
+    setActiveBookId(res.meta.id);
+    if (autoStart) setReading(true);
+  }
+
+  async function onUploaded(book: ParsedBook) {
+    // Save outgoing progress, then add + open the new book.
+    if (active) updateBookPosition(active.id, active.position);
+    const entry = await addBookToLibrary(book);
+    setShowUploader(false);
+    await openBook(entry.id, true);
   }
 
   function onPosition(p: number) {
-    setSaved((prev) => {
+    setActive((prev) => {
       if (!prev) return prev;
-      const next = { ...prev, position: p };
-      void saveSavedBook(next);
-      return next;
+      // Persist every position tick so switching books is always clean.
+      updateBookPosition(prev.id, p);
+      return { ...prev, position: p };
     });
   }
 
-  function removeBook() {
-    setSaved(null);
-    void saveSavedBook(null);
+  function closeReader() {
+    if (active) updateBookPosition(active.id, active.position);
+    setReading(false);
   }
 
   function toggleTheme(checked: boolean) {
@@ -110,10 +123,10 @@ function Index() {
             </label>
           </div>
           <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight text-ink text-balance">
-            Read faster, one page at a time.
+            Your reading library.
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Start at a comfortable speed, ramp up to your target, and watch the days fill in.
+            Upload as many books as you like — each keeps its own place and progress.
           </p>
         </div>
       </header>
@@ -121,68 +134,46 @@ function Index() {
       <main className="mx-auto max-w-2xl space-y-6 px-5">
         <StatsBar />
 
-        {saved ? (
-          <section className="relative overflow-hidden rounded-2xl border border-border bg-card/70 p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-ember/15 text-ember">
-                <BookMarked className="h-6 w-6" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">Currently reading</p>
-                <h2 className="font-display text-lg font-semibold text-ink truncate">{saved.book.title}</h2>
-                <p className="text-xs text-muted-foreground">
-                  {Math.round((saved.position / Math.max(1, saved.book.words.length)) * 100)}% complete
-                  {" · "}
-                  {saved.book.words.length.toLocaleString()} words
-                </p>
-                <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
-                  <div
-                    className="h-full bg-ember"
-                    style={{ width: `${(saved.position / Math.max(1, saved.book.words.length)) * 100}%` }}
-                  />
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <Button
-                    onClick={() => setReading(true)}
-                    className="gap-2 bg-ember text-ember-foreground hover:bg-ember/90"
-                  >
-                    <Play className="h-4 w-4" /> Continue
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={removeBook} aria-label="Remove book">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </section>
-        ) : (
-          <Uploader onLoaded={onLoaded} />
-        )}
+        <Library activeId={activeId} onOpen={(id) => void openBook(id, true)} />
 
-        {saved && (
-          <details className="group">
-            <summary className="cursor-pointer text-sm text-muted-foreground hover:text-ink">
-              Upload a different book
-            </summary>
-            <div className="mt-3">
-              <Uploader onLoaded={onLoaded} />
-            </div>
-          </details>
+        {ready && (
+          <section>
+            {showUploader ? (
+              <div className="space-y-2">
+                <Uploader onLoaded={onUploaded} />
+                <button
+                  onClick={() => setShowUploader(false)}
+                  className="text-xs text-muted-foreground hover:text-ink"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowUploader(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-paper/60 px-4 py-4 text-sm font-medium text-muted-foreground transition-colors hover:border-ember/60 hover:text-ember"
+              >
+                <Plus className="h-4 w-4" />
+                Add a book to your library
+              </button>
+            )}
+          </section>
         )}
 
         <ProgressCalendar />
 
         <footer className="pt-2 text-center text-xs text-muted-foreground">
-          Your books and progress are stored only on this device. Works offline once installed.
+          Your library and progress live only on this device. Works offline once installed.
         </footer>
       </main>
 
-      {reading && saved && (
+      {reading && active && (
         <SpeedReader
-          book={saved.book}
-          position={saved.position}
+          key={active.id}
+          book={active.book}
+          position={active.position}
           onPosition={onPosition}
-          onClose={() => setReading(false)}
+          onClose={closeReader}
         />
       )}
     </div>
