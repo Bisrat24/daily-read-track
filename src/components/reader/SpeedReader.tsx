@@ -109,11 +109,11 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     setWakeLockActive(false);
   }, []);
 
-  // Auto-pause when hidden and re-acquire wake lock when visible again.
+  // Auto-pause when hidden (if enabled) and re-acquire wake lock when visible again.
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === "hidden") {
-        if (playingRef.current) {
+        if (playingRef.current && settings.autoPauseOnHide) {
           flushRecord();
           releaseWakeLock();
           setPlaying(false);
@@ -130,7 +130,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
       document.removeEventListener("visibilitychange", onVis);
       releaseWakeLock();
     };
-  }, [acquireWakeLock, releaseWakeLock]);
+  }, [acquireWakeLock, releaseWakeLock, settings.autoPauseOnHide]);
 
   function currentWpm() {
     const { startWpm, targetWpm, rampMinutes } = settings;
