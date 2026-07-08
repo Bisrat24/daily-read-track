@@ -492,6 +492,28 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
                   {settings.mode === "bionic" && (
                     <SliderRow label="Bionic bold" value={settings.bionicBoldPct} unit="%" min={20} max={60} step={5} onChange={(v) => update("bionicBoldPct", v)} />
                   )}
+                  <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
+                    <span className="text-sm font-medium text-ink">Auto-pause when hidden</span>
+                    <button
+                      type="button"
+                      onClick={() => update("autoPauseOnHide", !settings.autoPauseOnHide)}
+                      aria-pressed={settings.autoPauseOnHide}
+                      className={[
+                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                        settings.autoPauseOnHide ? "bg-ember" : "bg-muted",
+                      ].join(" ")}
+                    >
+                      <span
+                        className={[
+                          "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                          settings.autoPauseOnHide ? "translate-x-6" : "translate-x-1",
+                        ].join(" ")}
+                      />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    When off, reading continues in the background and only the wake lock is re-acquired when you return.
+                  </p>
                 </div>
               )}
             </div>
