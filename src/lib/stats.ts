@@ -23,6 +23,7 @@ export type Settings = {
   chunkSize: number; // words shown together in chunk mode
   bionicBoldPct: number; // 30-40 typical; fraction of each word bolded
   autoPauseOnHide: boolean; // pause playback when app is hidden / screen locked
+  textSize: number; // reader font size in px
 };
 
 export const defaultSettings: Settings = {
@@ -33,6 +34,7 @@ export const defaultSettings: Settings = {
   chunkSize: 3,
   bionicBoldPct: 40,
   autoPauseOnHide: true,
+  textSize: 24,
 };
 
 function isBrowser() {
