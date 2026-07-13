@@ -24,6 +24,7 @@ export type Settings = {
   bionicBoldPct: number; // 30-40 typical; fraction of each word bolded
   autoPauseOnHide: boolean; // pause playback when app is hidden / screen locked
   textSize: number; // reader font size in px
+  longWordDelay: number; // 0-200%, scales extra dwell for long / hyphenated words
 };
 
 export const defaultSettings: Settings = {
@@ -35,6 +36,7 @@ export const defaultSettings: Settings = {
   bionicBoldPct: 40,
   autoPauseOnHide: true,
   textSize: 24,
+  longWordDelay: 100,
 };
 
 function isBrowser() {
