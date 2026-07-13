@@ -148,6 +148,8 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   // - long / syllable-heavy words → extra dwell time
   function pacingMultiplierFor(startIdx: number, size: number) {
     let mult = 1;
+    // User-tunable scale for word-length / hyphen dwell (100 = default).
+    const scale = Math.max(0, settings.longWordDelay) / 100;
     for (let k = 0; k < size; k++) {
       const w = book.words[startIdx + k];
       if (!w) break;
@@ -161,15 +163,29 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
         else if (unique.has(",")) mult *= 1.1;
       }
 
-      // Long / syllable-heavy words
-      const core = w.replace(/[^A-Za-z]/g, "");
-      if (core.length >= 10) mult *= 1.35;
-      else if (core.length >= 7) mult *= 1.15;
+      // Word-length / hyphen extras — scaled by user preference.
+      let extra = 0;
+      const raw = w.replace(/[^A-Za-z-]/g, "");
+      const segments = raw.split(/-+/).filter(Boolean);
+      const isHyphenated = segments.length > 1;
+      const core = raw.replace(/-/g, "");
+      if (core.length >= 14) extra += 0.55;
+      else if (core.length >= 10) extra += 0.35;
+      else if (core.length >= 7) extra += 0.15;
+      if (isHyphenated) {
+        // Each additional hyphen-joined segment adds a small dwell,
+        // scaled by the longest segment's length so "well-being" is light
+        // but "state-of-the-art" gets meaningful room.
+        const longest = Math.max(...segments.map((s) => s.length));
+        extra += 0.15 * (segments.length - 1) + Math.min(0.25, longest / 40);
+      }
       const syllables = countSyllables(core);
-      if (syllables >= 7) mult *= 1.1;
-      else if (syllables >= 6) mult *= 1.05;
+      if (syllables >= 7) extra += 0.1;
+      else if (syllables >= 6) extra += 0.05;
+
+      mult *= 1 + extra * scale;
     }
-    return Math.min(mult, 3);
+    return Math.min(mult, 4);
   }
 
   useEffect(() => {
