@@ -605,17 +605,17 @@ function ChunkStage({
 }
 
 function BionicStage({
-  words, start, currentIdx, chunkSize, boldPct, activeRef,
+  words, start, currentIdx, chunkSize, boldPct, textSize, activeRef,
 }: {
-  words: string[]; start: number; currentIdx: number; chunkSize: number; boldPct: number;
+  words: string[]; start: number; currentIdx: number; chunkSize: number; boldPct: number; textSize: number;
   activeRef: React.MutableRefObject<HTMLSpanElement | null>;
 }) {
   // Long words: 40–50% of letters (slider-controlled). Short words (<4): 1 letter.
   const frac = Math.max(0.4, Math.min(0.5, boldPct / 100));
   return (
     <p
-      className="font-display text-left text-xl sm:text-2xl leading-relaxed text-ink w-full max-w-prose mx-auto"
-      style={{ fontVariantLigatures: "none", fontKerning: "none" }}
+      className="font-display text-left leading-relaxed text-ink w-full max-w-prose mx-auto"
+      style={{ fontSize: textSize, fontVariantLigatures: "none", fontKerning: "none" }}
     >
       {words.map((w, i) => {
         const abs = start + i;
