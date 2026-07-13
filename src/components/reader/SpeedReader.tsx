@@ -349,7 +349,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
         ].join(" ")}
       >
         {settings.mode === "rsvp" ? (
-          <RsvpStage word={word} />
+          <RsvpStage word={word} textSize={settings.textSize} />
         ) : settings.mode === "bionic" ? (
           <BionicStage
             words={chunkWindow!.slice}
@@ -357,6 +357,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             currentIdx={idx}
             chunkSize={chunkSize}
             boldPct={settings.bionicBoldPct}
+            textSize={settings.textSize}
             activeRef={activeWordRef}
           />
         ) : (
@@ -365,6 +366,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             start={chunkWindow!.start}
             currentIdx={idx}
             chunkSize={chunkSize}
+            textSize={settings.textSize}
             activeRef={activeWordRef}
           />
         )}
@@ -492,6 +494,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
                   {settings.mode === "bionic" && (
                     <SliderRow label="Bionic bold" value={settings.bionicBoldPct} unit="%" min={20} max={60} step={5} onChange={(v) => update("bionicBoldPct", v)} />
                   )}
+                  <SliderRow label="Text size" value={settings.textSize} unit="px" min={16} max={48} step={2} onChange={(v) => update("textSize", v)} />
                   <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
                     <span className="text-sm font-medium text-ink">Auto-pause when hidden</span>
                     <button
@@ -548,7 +551,7 @@ function SliderRow({
   );
 }
 
-function RsvpStage({ word }: { word: string }) {
+function RsvpStage({ word, textSize }: { word: string; textSize: number }) {
   const fi = focusIndex(word);
   const before = word.slice(0, fi);
   const focus = word.charAt(fi);
@@ -557,7 +560,7 @@ function RsvpStage({ word }: { word: string }) {
     <div className="relative w-full max-w-xl">
       <div className="pointer-events-none absolute left-1/2 top-0 h-3 w-px -translate-x-1/2 bg-ember/60" />
       <div className="pointer-events-none absolute bottom-0 left-1/2 h-3 w-px -translate-x-1/2 bg-ember/60" />
-      <div className="font-display text-5xl sm:text-6xl font-medium tracking-tight text-ink">
+      <div className="font-display font-medium tracking-tight text-ink" style={{ fontSize: textSize }}>
         <div className="grid grid-cols-[1fr_auto_1fr] items-baseline">
           <span className="text-right tabular-nums">{before}</span>
           <span className="reader-focus-letter px-[1px]">{focus || "\u00A0"}</span>
@@ -569,13 +572,16 @@ function RsvpStage({ word }: { word: string }) {
 }
 
 function ChunkStage({
-  words, start, currentIdx, chunkSize, activeRef,
+  words, start, currentIdx, chunkSize, textSize, activeRef,
 }: {
-  words: string[]; start: number; currentIdx: number; chunkSize: number;
+  words: string[]; start: number; currentIdx: number; chunkSize: number; textSize: number;
   activeRef: React.MutableRefObject<HTMLSpanElement | null>;
 }) {
   return (
-    <p className="font-display text-left text-xl sm:text-2xl leading-relaxed text-ink/80 w-full max-w-prose mx-auto">
+    <p
+      className="font-display text-left leading-relaxed text-ink/80 w-full max-w-prose mx-auto"
+      style={{ fontSize: textSize }}
+    >
       {words.map((w, i) => {
         const abs = start + i;
         const isFirstActive = abs === currentIdx;
@@ -599,17 +605,17 @@ function ChunkStage({
 }
 
 function BionicStage({
-  words, start, currentIdx, chunkSize, boldPct, activeRef,
+  words, start, currentIdx, chunkSize, boldPct, textSize, activeRef,
 }: {
-  words: string[]; start: number; currentIdx: number; chunkSize: number; boldPct: number;
+  words: string[]; start: number; currentIdx: number; chunkSize: number; boldPct: number; textSize: number;
   activeRef: React.MutableRefObject<HTMLSpanElement | null>;
 }) {
   // Long words: 40–50% of letters (slider-controlled). Short words (<4): 1 letter.
   const frac = Math.max(0.4, Math.min(0.5, boldPct / 100));
   return (
     <p
-      className="font-display text-left text-xl sm:text-2xl leading-relaxed text-ink w-full max-w-prose mx-auto"
-      style={{ fontVariantLigatures: "none", fontKerning: "none" }}
+      className="font-display text-left leading-relaxed text-ink w-full max-w-prose mx-auto"
+      style={{ fontSize: textSize, fontVariantLigatures: "none", fontKerning: "none" }}
     >
       {words.map((w, i) => {
         const abs = start + i;
