@@ -511,6 +511,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
                     <SliderRow label="Bionic bold" value={settings.bionicBoldPct} unit="%" min={20} max={60} step={5} onChange={(v) => update("bionicBoldPct", v)} />
                   )}
                   <SliderRow label="Text size" value={settings.textSize} unit="px" min={16} max={48} step={2} onChange={(v) => update("textSize", v)} />
+                  <SliderRow label="Long-word delay" value={settings.longWordDelay} unit="%" min={0} max={200} step={10} onChange={(v) => update("longWordDelay", v)} />
                   <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
                     <span className="text-sm font-medium text-ink">Auto-pause when hidden</span>
                     <button
