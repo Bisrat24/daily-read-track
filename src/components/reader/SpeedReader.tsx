@@ -349,7 +349,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
         ].join(" ")}
       >
         {settings.mode === "rsvp" ? (
-          <RsvpStage word={word} />
+          <RsvpStage word={word} textSize={settings.textSize} />
         ) : settings.mode === "bionic" ? (
           <BionicStage
             words={chunkWindow!.slice}
@@ -357,6 +357,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             currentIdx={idx}
             chunkSize={chunkSize}
             boldPct={settings.bionicBoldPct}
+            textSize={settings.textSize}
             activeRef={activeWordRef}
           />
         ) : (
@@ -365,6 +366,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             start={chunkWindow!.start}
             currentIdx={idx}
             chunkSize={chunkSize}
+            textSize={settings.textSize}
             activeRef={activeWordRef}
           />
         )}
