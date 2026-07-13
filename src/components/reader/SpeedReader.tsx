@@ -24,7 +24,7 @@ import {
   type Settings,
 } from "@/lib/stats";
 import type { ParsedBook } from "@/lib/parsers";
-import { startMediaWakeLock, stopMediaWakeLock } from "@/lib/mediaWakeLock";
+import { requestWake, releaseWake, onWakeStatus } from "@/lib/wakeLock";
 
 type Props = {
   book: ParsedBook;
@@ -64,9 +64,6 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const startedAtRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(0);
   const wordsSinceRecordRef = useRef(0);
-  // Persistent wake lock sentinel — never cleared by re-renders/timer updates.
-  const wakeLockRef = useRef<any>(null);
-  const wakeLockWantedRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const activeWordRef = useRef<HTMLSpanElement | null>(null);
   // Track current playing state without subscribing visibility handler to re-renders.
@@ -78,51 +75,32 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   useEffect(() => { onPositionRef.current = onPosition; }, [onPosition]);
   useEffect(() => { onPositionRef.current(idx); }, [idx]);
 
-  // --- Wake Lock helpers ------------------------------------------------------
-  // Acquire is called DIRECTLY from the Play onClick handler (user gesture),
-  // which Opera / Chromium require. We never re-acquire from state effects
-  // while playing, so timer/slider re-renders can't drop the lock.
-  const acquireWakeLock = useCallback(async () => {
-    wakeLockWantedRef.current = true;
-    startMediaWakeLock({ title: book.title || "Speed Reader", artist: "Pace" });
-    setWakeLockActive(true);
-    try {
-      const wl: any = (navigator as any).wakeLock;
-      if (!wl?.request) return;
-      if (wakeLockRef.current) return;
-      const lock = await wl.request("screen");
-      wakeLockRef.current = lock;
-      lock.addEventListener?.("release", () => {
-        wakeLockRef.current = null;
-        if (!wakeLockWantedRef.current) setWakeLockActive(false);
-      });
-    } catch {
-      /* ignore */
-    }
+  // Subscribe to wake-lock status for the header indicator.
+  useEffect(() => {
+    const off = onWakeStatus(setWakeLockActive);
+    return () => { off(); };
+  }, []);
+
+  const acquireWakeLock = useCallback(() => {
+    void requestWake({ title: book.title || "Speed Reader", artist: "Pace" });
   }, [book.title]);
 
   const releaseWakeLock = useCallback(() => {
-    wakeLockWantedRef.current = false;
-    stopMediaWakeLock();
-    try { wakeLockRef.current?.release?.(); } catch { /* ignore */ }
-    wakeLockRef.current = null;
-    setWakeLockActive(false);
+    releaseWake();
   }, []);
 
-  // Auto-pause when hidden (if enabled) and re-acquire wake lock when visible again.
+  // Auto-pause when hidden (if enabled). The wake-lock module handles its own
+  // re-acquisition on visibilitychange / focus, so we only manage playback here.
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "hidden") {
-        if (playingRef.current && settings.autoPauseOnHide) {
-          flushRecord();
-          releaseWakeLock();
-          setPlaying(false);
-        }
-      } else if (
-        wakeLockWantedRef.current &&
-        !wakeLockRef.current
+      if (
+        document.visibilityState === "hidden" &&
+        playingRef.current &&
+        settings.autoPauseOnHide
       ) {
-        acquireWakeLock();
+        flushRecord();
+        releaseWakeLock();
+        setPlaying(false);
       }
     };
     document.addEventListener("visibilitychange", onVis);
@@ -130,7 +108,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
       document.removeEventListener("visibilitychange", onVis);
       releaseWakeLock();
     };
-  }, [acquireWakeLock, releaseWakeLock, settings.autoPauseOnHide]);
+  }, [releaseWakeLock, settings.autoPauseOnHide]);
 
   function currentWpm() {
     const { startWpm, targetWpm, rampMinutes } = settings;
@@ -217,7 +195,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, chunkSize, idx, settings.startWpm, settings.targetWpm, settings.rampMinutes, book.words.length]);
+  }, [playing, chunkSize, idx, settings.startWpm, settings.targetWpm, settings.rampMinutes, settings.longWordDelay, book.words.length]);
 
   function flushRecord() {
     if (wordsSinceRecordRef.current > 0) {
