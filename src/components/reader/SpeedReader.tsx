@@ -551,7 +551,7 @@ function SliderRow({
   );
 }
 
-function RsvpStage({ word }: { word: string }) {
+function RsvpStage({ word, textSize }: { word: string; textSize: number }) {
   const fi = focusIndex(word);
   const before = word.slice(0, fi);
   const focus = word.charAt(fi);
@@ -560,7 +560,7 @@ function RsvpStage({ word }: { word: string }) {
     <div className="relative w-full max-w-xl">
       <div className="pointer-events-none absolute left-1/2 top-0 h-3 w-px -translate-x-1/2 bg-ember/60" />
       <div className="pointer-events-none absolute bottom-0 left-1/2 h-3 w-px -translate-x-1/2 bg-ember/60" />
-      <div className="font-display text-5xl sm:text-6xl font-medium tracking-tight text-ink">
+      <div className="font-display font-medium tracking-tight text-ink" style={{ fontSize: textSize }}>
         <div className="grid grid-cols-[1fr_auto_1fr] items-baseline">
           <span className="text-right tabular-nums">{before}</span>
           <span className="reader-focus-letter px-[1px]">{focus || "\u00A0"}</span>
