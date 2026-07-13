@@ -195,7 +195,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, chunkSize, idx, settings.startWpm, settings.targetWpm, settings.rampMinutes, book.words.length]);
+  }, [playing, chunkSize, idx, settings.startWpm, settings.targetWpm, settings.rampMinutes, settings.longWordDelay, book.words.length]);
 
   function flushRecord() {
     if (wordsSinceRecordRef.current > 0) {
