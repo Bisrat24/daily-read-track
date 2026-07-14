@@ -24,7 +24,7 @@ import {
   type Settings,
 } from "@/lib/stats";
 import type { ParsedBook } from "@/lib/parsers";
-import { requestWake, releaseWake, onWakeStatus } from "@/lib/wakeLock";
+import { requestWake, releaseWake, onWakeStatus, type WakeStatus } from "@/lib/wakeLock";
 
 type Props = {
   book: ParsedBook;
@@ -60,7 +60,11 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const [idx, setIdx] = useState(position);
   const [pageInput, setPageInput] = useState("");
   const [panelOpen, setPanelOpen] = useState(true);
-  const [wakeLockActive, setWakeLockActive] = useState(false);
+  const [wakeStatus, setWakeStatus] = useState<WakeStatus>({
+    wanted: false, active: false, nativeSupported: false,
+    nativeHeld: false, mediaHint: false, canvasLoop: false,
+  });
+  const wakeLockActive = wakeStatus.active;
   const startedAtRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(0);
   const wordsSinceRecordRef = useRef(0);
@@ -77,7 +81,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
   // Subscribe to wake-lock status for the header indicator.
   useEffect(() => {
-    const off = onWakeStatus(setWakeLockActive);
+    const off = onWakeStatus(setWakeStatus);
     return () => { off(); };
   }, []);
 
@@ -302,14 +306,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             </p>
             <p className="text-[11px] text-muted-foreground flex items-center justify-center gap-1.5">
               <span>Page {pageNum} / {totalPages} · {wpm} wpm</span>
-              <span
-                title={wakeLockActive ? "Screen wake lock active" : "Wake lock idle"}
-                aria-label={wakeLockActive ? "Wake lock on" : "Wake lock off"}
-                className={[
-                  "inline-block h-1.5 w-1.5 rounded-full",
-                  wakeLockActive ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" : "bg-muted-foreground/40",
-                ].join(" ")}
-              />
+              <WakeStatusBadge status={wakeStatus} />
             </p>
           </div>
           <div className="w-9" />
@@ -660,3 +657,46 @@ function BionicStage({
     </p>
   );
 }
+
+function WakeStatusBadge({ status }: { status: WakeStatus }) {
+  const { active, nativeHeld, mediaHint, canvasLoop, nativeSupported, wanted } = status;
+  let label = "Idle";
+  let tone = "bg-muted-foreground/40";
+  let title = "Screen wake lock idle — start reading to keep the screen on.";
+  if (active) {
+    if (nativeHeld) {
+      label = "Native";
+      tone = "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]";
+      title = "Native Screen Wake Lock active — the OS is holding the screen on.";
+    } else if (mediaHint && canvasLoop) {
+      label = "Media + Canvas";
+      tone = "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.8)]";
+      title = "Fallback: hidden media session + canvas repaint keeping the screen on.";
+    } else if (mediaHint) {
+      label = "Media";
+      tone = "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.8)]";
+      title = "Fallback: hidden video + mediaSession signalling active playback.";
+    } else if (canvasLoop) {
+      label = "Canvas";
+      tone = "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.8)]";
+      title = "Fallback: micro-canvas repaint loop keeping the browser busy.";
+    }
+  } else if (wanted) {
+    label = "Reacquiring…";
+    tone = "bg-amber-500/70";
+    title = "Wake lock was dropped by the OS; reacquiring when the tab is visible.";
+  } else if (!nativeSupported) {
+    title = "This browser doesn't support the native Screen Wake Lock API.";
+  }
+  return (
+    <span
+      title={title}
+      aria-label={`Wake lock: ${label}`}
+      className="inline-flex items-center gap-1"
+    >
+      <span className={`inline-block h-1.5 w-1.5 rounded-full ${tone}`} />
+      <span className="text-[10px] uppercase tracking-wide">{label}</span>
+    </span>
+  );
+}
+
