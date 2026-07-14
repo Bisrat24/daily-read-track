@@ -657,3 +657,46 @@ function BionicStage({
     </p>
   );
 }
+
+function WakeStatusBadge({ status }: { status: WakeStatus }) {
+  const { active, nativeHeld, mediaHint, canvasLoop, nativeSupported, wanted } = status;
+  let label = "Idle";
+  let tone = "bg-muted-foreground/40";
+  let title = "Screen wake lock idle — start reading to keep the screen on.";
+  if (active) {
+    if (nativeHeld) {
+      label = "Native";
+      tone = "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]";
+      title = "Native Screen Wake Lock active — the OS is holding the screen on.";
+    } else if (mediaHint && canvasLoop) {
+      label = "Media + Canvas";
+      tone = "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.8)]";
+      title = "Fallback: hidden media session + canvas repaint keeping the screen on.";
+    } else if (mediaHint) {
+      label = "Media";
+      tone = "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.8)]";
+      title = "Fallback: hidden video + mediaSession signalling active playback.";
+    } else if (canvasLoop) {
+      label = "Canvas";
+      tone = "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.8)]";
+      title = "Fallback: micro-canvas repaint loop keeping the browser busy.";
+    }
+  } else if (wanted) {
+    label = "Reacquiring…";
+    tone = "bg-amber-500/70";
+    title = "Wake lock was dropped by the OS; reacquiring when the tab is visible.";
+  } else if (!nativeSupported) {
+    title = "This browser doesn't support the native Screen Wake Lock API.";
+  }
+  return (
+    <span
+      title={title}
+      aria-label={`Wake lock: ${label}`}
+      className="inline-flex items-center gap-1"
+    >
+      <span className={`inline-block h-1.5 w-1.5 rounded-full ${tone}`} />
+      <span className="text-[10px] uppercase tracking-wide">{label}</span>
+    </span>
+  );
+}
+
