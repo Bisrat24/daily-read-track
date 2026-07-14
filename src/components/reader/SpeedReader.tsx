@@ -24,7 +24,7 @@ import {
   type Settings,
 } from "@/lib/stats";
 import type { ParsedBook } from "@/lib/parsers";
-import { requestWake, releaseWake, onWakeStatus } from "@/lib/wakeLock";
+import { requestWake, releaseWake, onWakeStatus, type WakeStatus } from "@/lib/wakeLock";
 
 type Props = {
   book: ParsedBook;
