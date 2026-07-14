@@ -81,7 +81,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
   // Subscribe to wake-lock status for the header indicator.
   useEffect(() => {
-    const off = onWakeStatus(setWakeLockActive);
+    const off = onWakeStatus(setWakeStatus);
     return () => { off(); };
   }, []);
 
