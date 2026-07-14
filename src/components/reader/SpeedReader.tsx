@@ -306,14 +306,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             </p>
             <p className="text-[11px] text-muted-foreground flex items-center justify-center gap-1.5">
               <span>Page {pageNum} / {totalPages} · {wpm} wpm</span>
-              <span
-                title={wakeLockActive ? "Screen wake lock active" : "Wake lock idle"}
-                aria-label={wakeLockActive ? "Wake lock on" : "Wake lock off"}
-                className={[
-                  "inline-block h-1.5 w-1.5 rounded-full",
-                  wakeLockActive ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.8)]" : "bg-muted-foreground/40",
-                ].join(" ")}
-              />
+              <WakeStatusBadge status={wakeStatus} />
             </p>
           </div>
           <div className="w-9" />
