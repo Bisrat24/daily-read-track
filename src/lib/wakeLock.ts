@@ -15,10 +15,26 @@
 
 import { startMediaWakeLock, stopMediaWakeLock } from "./mediaWakeLock";
 
-type StatusListener = (active: boolean) => void;
+export type WakeStatus = {
+  /** true when the reader has asked for the screen to stay awake. */
+  wanted: boolean;
+  /** true when at least one layer is holding the screen awake. */
+  active: boolean;
+  /** Whether the browser exposes navigator.wakeLock at all. */
+  nativeSupported: boolean;
+  /** Native Screen Wake Lock sentinel is currently held. */
+  nativeHeld: boolean;
+  /** Hidden <video> + mediaSession fallback is running. */
+  mediaHint: boolean;
+  /** Micro-canvas rAF fallback is running. */
+  canvasLoop: boolean;
+};
+
+type StatusListener = (s: WakeStatus) => void;
 
 let sentinel: any = null;
 let wanted = false;
+let mediaActive = false;
 let listeners = new Set<StatusListener>();
 let canvasRaf = 0;
 let canvas: HTMLCanvasElement | null = null;
@@ -26,10 +42,27 @@ let ctx: CanvasRenderingContext2D | null = null;
 let bootstrapped = false;
 let meta: { title?: string; artist?: string } = {};
 
-function notify() {
-  const active = wanted && (sentinel != null || canvasRaf !== 0);
-  for (const fn of listeners) fn(active);
+function snapshot(): WakeStatus {
+  const nativeSupported =
+    typeof navigator !== "undefined" && !!(navigator as any).wakeLock?.request;
+  const nativeHeld = sentinel != null;
+  const mediaHint = mediaActive;
+  const canvasLoop = canvasRaf !== 0;
+  return {
+    wanted,
+    active: wanted && (nativeHeld || mediaHint || canvasLoop),
+    nativeSupported,
+    nativeHeld,
+    mediaHint,
+    canvasLoop,
+  };
 }
+
+function notify() {
+  const s = snapshot();
+  for (const fn of listeners) fn(s);
+}
+
 
 function ensureCanvas() {
   if (canvas) return;
