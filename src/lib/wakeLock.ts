@@ -153,6 +153,7 @@ export async function requestWake(m?: { title?: string; artist?: string }) {
   meta = m ?? meta;
   // #2: media hint (safe to call from gesture; ignored if unsupported).
   startMediaWakeLock({ title: meta.title, artist: meta.artist });
+  mediaActive = true;
   // #1: native lock.
   const nativeOk = await tryNativeLock();
   // #3: canvas fallback whenever the native lock isn't holding.
@@ -163,6 +164,7 @@ export async function requestWake(m?: { title?: string; artist?: string }) {
 export function releaseWake() {
   wanted = false;
   stopMediaWakeLock();
+  mediaActive = false;
   stopCanvasLoop();
   try {
     sentinel?.release?.();
@@ -175,6 +177,7 @@ export function releaseWake() {
 
 export function onWakeStatus(fn: StatusListener) {
   listeners.add(fn);
-  fn(wanted && (sentinel != null || canvasRaf !== 0));
+  fn(snapshot());
   return () => listeners.delete(fn);
 }
+
