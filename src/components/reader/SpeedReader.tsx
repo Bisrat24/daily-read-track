@@ -127,7 +127,8 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     return Math.round(startWpm + (targetWpm - startWpm) * t);
   }
 
-  const chunkSize = settings.mode === "rsvp" ? 1 : Math.max(1, settings.chunkSize);
+  const chunkSize =
+    settings.mode === "rsvp" || settings.mode === "normal" ? 1 : Math.max(1, settings.chunkSize);
 
   // Dynamic pacing multiplier based on the current chunk's content:
   // - trailing punctuation → natural cognitive pause
