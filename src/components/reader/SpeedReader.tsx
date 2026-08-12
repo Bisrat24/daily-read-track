@@ -286,7 +286,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
   // Play button handler — acquires wake lock inline in the user gesture.
   // Toggles reading; play minimizes the settings panel, pause maximizes it.
-  function handlePlayClick() {
+  const handlePlayClick = useCallback(() => {
     const nextPlaying = !playing;
     if (nextPlaying) {
       // Rollback a few words on resume so the reader regains context.
@@ -304,10 +304,20 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     }
     setPlaying(nextPlaying);
     lastTickRef.current = 0;
+  }, [playing, acquireWakeLock, releaseWakeLock, setPanelOpen]);
+
+  // Double-tap anywhere on the reader stage to toggle play/pause.
+  function handleStageTouch(e: React.TouchEvent<HTMLDivElement>) {
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) {
+      e.preventDefault();
+      handlePlayClick();
+    }
+    lastTapRef.current = now;
   }
 
-
   const immersive = playing && settings.mode !== "rsvp";
+
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
