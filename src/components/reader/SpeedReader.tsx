@@ -70,9 +70,11 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const wordsSinceRecordRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const activeWordRef = useRef<HTMLSpanElement | null>(null);
+  const lastTapRef = useRef<number>(0);
   // Track current playing state without subscribing visibility handler to re-renders.
   const playingRef = useRef(playing);
   useEffect(() => { playingRef.current = playing; }, [playing]);
+
 
   useEffect(() => setSettings(loadSettings()), []);
   const onPositionRef = useRef(onPosition);
@@ -113,6 +115,8 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
       releaseWakeLock();
     };
   }, [releaseWakeLock, settings.autoPauseOnHide]);
+
+
 
   function currentWpm() {
     const { startWpm, targetWpm, rampMinutes } = settings;
@@ -269,7 +273,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
   // Play button handler — acquires wake lock inline in the user gesture.
   // Toggles reading; play minimizes the settings panel, pause maximizes it.
-  function handlePlayClick() {
+  const handlePlayClick = useCallback(() => {
     const nextPlaying = !playing;
     if (nextPlaying) {
       // Rollback a few words on resume so the reader regains context.
@@ -287,10 +291,35 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     }
     setPlaying(nextPlaying);
     lastTickRef.current = 0;
+  }, [playing, acquireWakeLock, releaseWakeLock, setPanelOpen]);
+
+  // Double-tap anywhere on the reader stage to toggle play/pause.
+  function handleStageTouch(e: React.TouchEvent<HTMLDivElement>) {
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) {
+      e.preventDefault();
+      handlePlayClick();
+    }
+    lastTapRef.current = now;
   }
 
+  // Keyboard shortcut: Space toggles play/pause (ignore when typing in inputs).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "button" || tag === "select") return;
+      if ((e.target as HTMLElement)?.isContentEditable) return;
+      e.preventDefault();
+      handlePlayClick();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handlePlayClick]);
 
   const immersive = playing && settings.mode !== "rsvp";
+
+
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
@@ -336,6 +365,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
       {/* Reader stage — expands to fill screen in Highlight/Bionic */}
       <div
         ref={scrollRef}
+        onTouchStart={handleStageTouch}
         className={[
           "flex flex-1 overflow-y-auto",
           settings.mode === "rsvp"
@@ -343,6 +373,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             : "flex-col items-stretch px-5 sm:px-8 py-6",
         ].join(" ")}
       >
+
         {settings.mode === "rsvp" ? (
           <RsvpStage word={word} textSize={settings.textSize} />
         ) : settings.mode === "bionic" ? (
