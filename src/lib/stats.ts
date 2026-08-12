@@ -19,7 +19,7 @@ export type Settings = {
   startWpm: number;
   targetWpm: number;
   rampMinutes: number; // time to ramp from start to target
-  mode: "rsvp" | "chunk" | "bionic";
+  mode: "rsvp" | "chunk" | "bionic" | "normal";
   chunkSize: number; // words shown together in chunk mode
   bionicBoldPct: number; // 30-40 typical; fraction of each word bolded
   autoPauseOnHide: boolean; // pause playback when app is hidden / screen locked

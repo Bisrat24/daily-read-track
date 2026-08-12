@@ -127,7 +127,8 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     return Math.round(startWpm + (targetWpm - startWpm) * t);
   }
 
-  const chunkSize = settings.mode === "rsvp" ? 1 : Math.max(1, settings.chunkSize);
+  const chunkSize =
+    settings.mode === "rsvp" || settings.mode === "normal" ? 1 : Math.max(1, settings.chunkSize);
 
   // Dynamic pacing multiplier based on the current chunk's content:
   // - trailing punctuation → natural cognitive pause
@@ -303,19 +304,32 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     lastTapRef.current = now;
   }
 
-  // Keyboard shortcut: Space toggles play/pause (ignore when typing in inputs).
+  // Keyboard: Space toggles play/pause, ←/→ step one word (ignore inputs).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== "Space") return;
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
-      if (tag === "input" || tag === "textarea" || tag === "button" || tag === "select") return;
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
       if ((e.target as HTMLElement)?.isContentEditable) return;
+      if (e.code === "ArrowRight") {
+        e.preventDefault();
+        step(1);
+        return;
+      }
+      if (e.code === "ArrowLeft") {
+        e.preventDefault();
+        step(-1);
+        return;
+      }
+      if (e.code !== "Space") return;
+      if (tag === "button") return;
       e.preventDefault();
       handlePlayClick();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handlePlayClick]);
+
 
   const immersive = playing && settings.mode !== "rsvp";
 
@@ -353,12 +367,18 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             value={settings.mode}
             onValueChange={(v) => update("mode", v as Settings["mode"])}
           >
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="normal">Normal</TabsTrigger>
               <TabsTrigger value="rsvp">Flash</TabsTrigger>
               <TabsTrigger value="chunk">Highlight</TabsTrigger>
               <TabsTrigger value="bionic">Bionic</TabsTrigger>
             </TabsList>
           </Tabs>
+          {settings.mode === "normal" && (
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">
+              Tap any word to start reading from there — your current spot stays highlighted.
+            </p>
+          )}
         </div>
       )}
 
@@ -376,6 +396,15 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
         {settings.mode === "rsvp" ? (
           <RsvpStage word={word} textSize={settings.textSize} />
+        ) : settings.mode === "normal" ? (
+          <NormalStage
+            words={chunkWindow!.slice}
+            start={chunkWindow!.start}
+            currentIdx={idx}
+            textSize={settings.textSize}
+            activeRef={activeWordRef}
+            onWordClick={seekTo}
+          />
         ) : settings.mode === "bionic" ? (
           <BionicStage
             words={chunkWindow!.slice}
@@ -735,3 +764,44 @@ function WakeStatusBadge({ status }: { status: WakeStatus }) {
   );
 }
 
+
+function NormalStage({
+  words, start, currentIdx, textSize, activeRef, onWordClick,
+}: {
+  words: string[]; start: number; currentIdx: number; textSize: number;
+  activeRef: React.MutableRefObject<HTMLSpanElement | null>;
+  onWordClick: (index: number) => void;
+}) {
+  return (
+    <p
+      className="font-display text-left leading-relaxed text-ink w-full max-w-prose mx-auto"
+      style={{ fontSize: textSize }}
+    >
+      {words.map((w, i) => {
+        const abs = start + i;
+        const active = abs === currentIdx;
+        const past = abs < currentIdx;
+        return (
+          <span
+            key={i}
+            ref={active ? activeRef : undefined}
+            role="button"
+            tabIndex={-1}
+            title="Start from this word"
+            onClick={() => onWordClick(abs)}
+            className={[
+              "cursor-pointer rounded px-0.5 transition-colors hover:bg-ember/15",
+              active
+                ? "bg-ember/30 text-ink ring-1 ring-ember/50 font-semibold"
+                : past
+                ? "text-muted-foreground/60"
+                : "text-ink/90",
+            ].join(" ")}
+          >
+            {w}{" "}
+          </span>
+        );
+      })}
+    </p>
+  );
+}
