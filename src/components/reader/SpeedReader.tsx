@@ -70,9 +70,11 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const wordsSinceRecordRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const activeWordRef = useRef<HTMLSpanElement | null>(null);
+  const lastTapRef = useRef<number>(0);
   // Track current playing state without subscribing visibility handler to re-renders.
   const playingRef = useRef(playing);
   useEffect(() => { playingRef.current = playing; }, [playing]);
+
 
   useEffect(() => setSettings(loadSettings()), []);
   const onPositionRef = useRef(onPosition);
