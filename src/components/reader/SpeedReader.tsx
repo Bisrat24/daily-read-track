@@ -365,6 +365,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
       {/* Reader stage — expands to fill screen in Highlight/Bionic */}
       <div
         ref={scrollRef}
+        onTouchStart={handleStageTouch}
         className={[
           "flex flex-1 overflow-y-auto",
           settings.mode === "rsvp"
@@ -372,6 +373,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             : "flex-col items-stretch px-5 sm:px-8 py-6",
         ].join(" ")}
       >
+
         {settings.mode === "rsvp" ? (
           <RsvpStage word={word} textSize={settings.textSize} />
         ) : settings.mode === "bionic" ? (
