@@ -764,3 +764,44 @@ function WakeStatusBadge({ status }: { status: WakeStatus }) {
   );
 }
 
+
+function NormalStage({
+  words, start, currentIdx, textSize, activeRef, onWordClick,
+}: {
+  words: string[]; start: number; currentIdx: number; textSize: number;
+  activeRef: React.MutableRefObject<HTMLSpanElement | null>;
+  onWordClick: (index: number) => void;
+}) {
+  return (
+    <p
+      className="font-display text-left leading-relaxed text-ink w-full max-w-prose mx-auto"
+      style={{ fontSize: textSize }}
+    >
+      {words.map((w, i) => {
+        const abs = start + i;
+        const active = abs === currentIdx;
+        const past = abs < currentIdx;
+        return (
+          <span
+            key={i}
+            ref={active ? activeRef : undefined}
+            role="button"
+            tabIndex={-1}
+            title="Start from this word"
+            onClick={() => onWordClick(abs)}
+            className={[
+              "cursor-pointer rounded px-0.5 transition-colors hover:bg-ember/15",
+              active
+                ? "bg-ember/30 text-ink ring-1 ring-ember/50 font-semibold"
+                : past
+                ? "text-muted-foreground/60"
+                : "text-ink/90",
+            ].join(" ")}
+          >
+            {w}{" "}
+          </span>
+        );
+      })}
+    </p>
+  );
+}
