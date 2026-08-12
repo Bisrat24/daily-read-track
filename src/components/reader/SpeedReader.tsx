@@ -268,6 +268,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   }
 
   // Play button handler — acquires wake lock inline in the user gesture.
+  // Toggles reading; play minimizes the settings panel, pause maximizes it.
   function handlePlayClick() {
     const nextPlaying = !playing;
     if (nextPlaying) {
@@ -278,13 +279,16 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
       // Fire-and-forget INSIDE the click event to satisfy Opera's gesture check.
       acquireWakeLock();
       if (!startedAtRef.current) startedAtRef.current = Date.now();
+      setPanelOpen(false);
     } else {
       flushRecord();
       releaseWakeLock();
+      setPanelOpen(true);
     }
     setPlaying(nextPlaying);
     lastTickRef.current = 0;
   }
+
 
   const immersive = playing && settings.mode !== "rsvp";
 
