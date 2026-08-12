@@ -303,7 +303,22 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     lastTapRef.current = now;
   }
 
+  // Keyboard shortcut: Space toggles play/pause (ignore when typing in inputs).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "button" || tag === "select") return;
+      if ((e.target as HTMLElement)?.isContentEditable) return;
+      e.preventDefault();
+      handlePlayClick();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handlePlayClick]);
+
   const immersive = playing && settings.mode !== "rsvp";
+
 
 
   return (
