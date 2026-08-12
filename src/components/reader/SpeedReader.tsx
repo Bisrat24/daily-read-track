@@ -367,12 +367,18 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             value={settings.mode}
             onValueChange={(v) => update("mode", v as Settings["mode"])}
           >
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="normal">Normal</TabsTrigger>
               <TabsTrigger value="rsvp">Flash</TabsTrigger>
               <TabsTrigger value="chunk">Highlight</TabsTrigger>
               <TabsTrigger value="bionic">Bionic</TabsTrigger>
             </TabsList>
           </Tabs>
+          {settings.mode === "normal" && (
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">
+              Tap any word to start reading from there — your current spot stays highlighted.
+            </p>
+          )}
         </div>
       )}
 
@@ -390,6 +396,15 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
         {settings.mode === "rsvp" ? (
           <RsvpStage word={word} textSize={settings.textSize} />
+        ) : settings.mode === "normal" ? (
+          <NormalStage
+            words={chunkWindow!.slice}
+            start={chunkWindow!.start}
+            currentIdx={idx}
+            textSize={settings.textSize}
+            activeRef={activeWordRef}
+            onWordClick={seekTo}
+          />
         ) : settings.mode === "bionic" ? (
           <BionicStage
             words={chunkWindow!.slice}
