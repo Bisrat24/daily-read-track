@@ -177,7 +177,9 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
   useEffect(() => {
     if (!playing) return;
+    if (settings.readAloud) return; // speech drives the pacing instead
     if (!startedAtRef.current) startedAtRef.current = Date.now();
+
     let raf = 0;
     const step = (t: number) => {
       const wpm = currentWpm();
