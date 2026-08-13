@@ -206,7 +206,48 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, chunkSize, idx, settings.startWpm, settings.targetWpm, settings.rampMinutes, settings.longWordDelay, book.words.length]);
+  }, [playing, chunkSize, idx, settings.startWpm, settings.targetWpm, settings.rampMinutes, settings.longWordDelay, settings.readAloud, book.words.length]);
+
+  // Read-aloud mode: speech synthesis drives advancement. Each chunk is spoken
+  // and the position advances when the utterance ends.
+  useEffect(() => {
+    if (!playing || !settings.readAloud) return;
+    const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
+    if (!synth) return;
+    const text = book.words.slice(idx, idx + Math.max(1, chunkSize)).join(" ");
+    if (!text.trim()) return;
+    let cancelled = false;
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = Math.min(2, Math.max(0.5, settings.speechRate));
+    u.pitch = Math.min(2, Math.max(0, settings.speechPitch));
+    const advance = () => {
+      if (cancelled) return;
+      setIdx((i) => {
+        const next = i + Math.max(1, chunkSize);
+        if (next >= book.words.length) {
+          setPlaying(false);
+          flushRecord();
+          return book.words.length - 1;
+        }
+        wordsSinceRecordRef.current += Math.max(1, chunkSize);
+        if (wordsSinceRecordRef.current >= 25) flushRecord();
+        return next;
+      });
+    };
+    u.onend = advance;
+    u.onerror = advance;
+    synth.cancel();
+    synth.speak(u);
+    return () => {
+      cancelled = true;
+      u.onend = null;
+      u.onerror = null;
+      synth.cancel();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, settings.readAloud, settings.speechRate, settings.speechPitch, idx, chunkSize, book.words]);
+
+
 
   function flushRecord() {
     if (wordsSinceRecordRef.current > 0) {
