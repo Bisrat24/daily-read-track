@@ -673,7 +673,7 @@ function SliderRow({
           {hint && <span className="ml-2 text-[11px] font-normal text-muted-foreground">{hint}</span>}
         </span>
         <span className="font-mono text-sm tabular-nums text-muted-foreground">
-          {value} <span className="text-xs">{unit}</span>
+          {step < 1 ? value.toFixed(1) : value} <span className="text-xs">{unit}</span>
         </span>
       </div>
       <Slider value={[value]} min={min} max={max} step={step} onValueChange={([v]) => onChange(v)} />
