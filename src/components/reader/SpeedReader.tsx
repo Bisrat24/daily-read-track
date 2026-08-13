@@ -10,6 +10,7 @@ import {
   X,
   CornerDownRight,
   Settings2,
+  Volume2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -60,6 +61,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const [idx, setIdx] = useState(position);
   const [pageInput, setPageInput] = useState("");
   const [panelOpen, setPanelOpen] = useState(true);
+  const [voicePanelOpen, setVoicePanelOpen] = useState(false);
   const [wakeStatus, setWakeStatus] = useState<WakeStatus>({
     wanted: false, active: false, nativeSupported: false,
     nativeHeld: false, mediaHint: false, canvasLoop: false,
