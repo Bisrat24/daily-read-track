@@ -177,7 +177,9 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
 
   useEffect(() => {
     if (!playing) return;
+    if (settings.readAloud) return; // speech drives the pacing instead
     if (!startedAtRef.current) startedAtRef.current = Date.now();
+
     let raf = 0;
     const step = (t: number) => {
       const wpm = currentWpm();
@@ -204,7 +206,48 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, chunkSize, idx, settings.startWpm, settings.targetWpm, settings.rampMinutes, settings.longWordDelay, book.words.length]);
+  }, [playing, chunkSize, idx, settings.startWpm, settings.targetWpm, settings.rampMinutes, settings.longWordDelay, settings.readAloud, book.words.length]);
+
+  // Read-aloud mode: speech synthesis drives advancement. Each chunk is spoken
+  // and the position advances when the utterance ends.
+  useEffect(() => {
+    if (!playing || !settings.readAloud) return;
+    const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
+    if (!synth) return;
+    const text = book.words.slice(idx, idx + Math.max(1, chunkSize)).join(" ");
+    if (!text.trim()) return;
+    let cancelled = false;
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = Math.min(2, Math.max(0.5, settings.speechRate));
+    u.pitch = Math.min(2, Math.max(0, settings.speechPitch));
+    const advance = () => {
+      if (cancelled) return;
+      setIdx((i) => {
+        const next = i + Math.max(1, chunkSize);
+        if (next >= book.words.length) {
+          setPlaying(false);
+          flushRecord();
+          return book.words.length - 1;
+        }
+        wordsSinceRecordRef.current += Math.max(1, chunkSize);
+        if (wordsSinceRecordRef.current >= 25) flushRecord();
+        return next;
+      });
+    };
+    u.onend = advance;
+    u.onerror = advance;
+    synth.cancel();
+    synth.speak(u);
+    return () => {
+      cancelled = true;
+      u.onend = null;
+      u.onerror = null;
+      synth.cancel();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, settings.readAloud, settings.speechRate, settings.speechPitch, idx, chunkSize, book.words]);
+
+
 
   function flushRecord() {
     if (wordsSinceRecordRef.current > 0) {
@@ -304,7 +347,8 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     lastTapRef.current = now;
   }
 
-  // Keyboard: Space toggles play/pause, ←/→ step one word (ignore inputs).
+  // Keyboard: Space toggles play/pause, ←/→ step one word,
+  // Shift+←/→ jump 5 words (ignore inputs).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
@@ -312,12 +356,12 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
       if ((e.target as HTMLElement)?.isContentEditable) return;
       if (e.code === "ArrowRight") {
         e.preventDefault();
-        step(1);
+        step(e.shiftKey ? 5 : 1);
         return;
       }
       if (e.code === "ArrowLeft") {
         e.preventDefault();
-        step(-1);
+        step(e.shiftKey ? -5 : -1);
         return;
       }
       if (e.code !== "Space") return;
@@ -329,6 +373,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handlePlayClick]);
+
 
 
   const immersive = playing && settings.mode !== "rsvp";
@@ -552,6 +597,35 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
                   <SliderRow label="Text size" value={settings.textSize} unit="px" min={16} max={48} step={2} onChange={(v) => update("textSize", v)} />
                   <SliderRow label="Long-word delay" value={settings.longWordDelay} unit="%" min={0} max={200} step={10} onChange={(v) => update("longWordDelay", v)} />
                   <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
+                    <span className="text-sm font-medium text-ink">Read aloud</span>
+                    <button
+                      type="button"
+                      onClick={() => update("readAloud", !settings.readAloud)}
+                      aria-pressed={settings.readAloud}
+                      className={[
+                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                        settings.readAloud ? "bg-ember" : "bg-muted",
+                      ].join(" ")}
+                    >
+                      <span
+                        className={[
+                          "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                          settings.readAloud ? "translate-x-6" : "translate-x-1",
+                        ].join(" ")}
+                      />
+                    </button>
+                  </div>
+                  {settings.readAloud && (
+                    <>
+                      <SliderRow label="Voice speed" value={settings.speechRate} unit="x" min={0.5} max={2} step={0.1} onChange={(v) => update("speechRate", v)} />
+                      <SliderRow label="Voice pitch" value={settings.speechPitch} unit="" min={0} max={2} step={0.1} onChange={(v) => update("speechPitch", v)} />
+                      <p className="text-[11px] text-muted-foreground">
+                        While read aloud is on, the spoken voice sets the pace instead of the wpm ramp.
+                      </p>
+                    </>
+                  )}
+
+                  <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
                     <span className="text-sm font-medium text-ink">Auto-pause when hidden</span>
                     <button
                       type="button"
@@ -599,7 +673,7 @@ function SliderRow({
           {hint && <span className="ml-2 text-[11px] font-normal text-muted-foreground">{hint}</span>}
         </span>
         <span className="font-mono text-sm tabular-nums text-muted-foreground">
-          {value} <span className="text-xs">{unit}</span>
+          {step < 1 ? value.toFixed(1) : value} <span className="text-xs">{unit}</span>
         </span>
       </div>
       <Slider value={[value]} min={min} max={max} step={step} onValueChange={([v]) => onChange(v)} />
@@ -774,7 +848,7 @@ function NormalStage({
 }) {
   return (
     <p
-      className="font-display text-left leading-relaxed text-ink w-full max-w-prose mx-auto"
+      className="font-display text-left leading-relaxed text-ink w-full max-w-prose mr-auto break-words"
       style={{ fontSize: textSize }}
     >
       {words.map((w, i) => {
@@ -790,9 +864,11 @@ function NormalStage({
             title="Start from this word"
             onClick={() => onWordClick(abs)}
             className={[
-              "cursor-pointer rounded px-0.5 transition-colors hover:bg-ember/15",
+              // No weight / padding / ring changes on the active word so the
+              // line never reflows — colour only, keeping text perfectly still.
+              "cursor-pointer rounded transition-colors hover:bg-ember/15",
               active
-                ? "bg-ember/30 text-ink ring-1 ring-ember/50 font-semibold"
+                ? "bg-ember/30 text-ink"
                 : past
                 ? "text-muted-foreground/60"
                 : "text-ink/90",
@@ -805,3 +881,4 @@ function NormalStage({
     </p>
   );
 }
+
