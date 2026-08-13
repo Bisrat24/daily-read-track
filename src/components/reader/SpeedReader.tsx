@@ -304,7 +304,8 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     lastTapRef.current = now;
   }
 
-  // Keyboard: Space toggles play/pause, ←/→ step one word (ignore inputs).
+  // Keyboard: Space toggles play/pause, ←/→ step one word,
+  // Shift+←/→ jump 5 words (ignore inputs).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
@@ -312,12 +313,12 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
       if ((e.target as HTMLElement)?.isContentEditable) return;
       if (e.code === "ArrowRight") {
         e.preventDefault();
-        step(1);
+        step(e.shiftKey ? 5 : 1);
         return;
       }
       if (e.code === "ArrowLeft") {
         e.preventDefault();
-        step(-1);
+        step(e.shiftKey ? -5 : -1);
         return;
       }
       if (e.code !== "Space") return;
@@ -329,6 +330,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handlePlayClick]);
+
 
 
   const immersive = playing && settings.mode !== "rsvp";
