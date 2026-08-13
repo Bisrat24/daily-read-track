@@ -10,6 +10,7 @@ import {
   X,
   CornerDownRight,
   Settings2,
+  Volume2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -60,6 +61,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
   const [idx, setIdx] = useState(position);
   const [pageInput, setPageInput] = useState("");
   const [panelOpen, setPanelOpen] = useState(true);
+  const [voicePanelOpen, setVoicePanelOpen] = useState(false);
   const [wakeStatus, setWakeStatus] = useState<WakeStatus>({
     wanted: false, active: false, nativeSupported: false,
     nativeHeld: false, mediaHint: false, canvasLoop: false,
@@ -510,7 +512,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             </div>
           </div>
 
-          <div className="space-y-5 p-6 pt-4">
+          <div className="max-h-[60vh] space-y-5 overflow-y-auto overscroll-contain p-6 pt-4">
             {/* Transport */}
             <div className="flex items-center justify-center gap-2">
               <Button variant="outline" size="icon" onClick={() => step(-WORDS_PER_PAGE)} aria-label="Back one page">
@@ -581,7 +583,7 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
                 <span className="text-xs text-muted-foreground">{panelOpen ? "Hide" : "Show"}</span>
               </button>
               {panelOpen && (
-                <div className="space-y-4 border-t border-border/60 p-4">
+                <div className="max-h-[40vh] space-y-4 overflow-y-auto overscroll-contain border-t border-border/60 p-4">
                   <SliderRow label="Start" value={settings.startWpm} unit="wpm" min={120} max={600} step={10} onChange={(v) => update("startWpm", v)} />
                   <SliderRow label="Target" value={settings.targetWpm} unit="wpm" min={150} max={900} step={10} onChange={(v) => update("targetWpm", v)} />
                   <SliderRow label="Ramp" value={settings.rampMinutes} unit="min" min={1} max={60} step={1} onChange={(v) => update("rampMinutes", v)} />
@@ -596,34 +598,6 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
                   )}
                   <SliderRow label="Text size" value={settings.textSize} unit="px" min={16} max={48} step={2} onChange={(v) => update("textSize", v)} />
                   <SliderRow label="Long-word delay" value={settings.longWordDelay} unit="%" min={0} max={200} step={10} onChange={(v) => update("longWordDelay", v)} />
-                  <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
-                    <span className="text-sm font-medium text-ink">Read aloud</span>
-                    <button
-                      type="button"
-                      onClick={() => update("readAloud", !settings.readAloud)}
-                      aria-pressed={settings.readAloud}
-                      className={[
-                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                        settings.readAloud ? "bg-ember" : "bg-muted",
-                      ].join(" ")}
-                    >
-                      <span
-                        className={[
-                          "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-                          settings.readAloud ? "translate-x-6" : "translate-x-1",
-                        ].join(" ")}
-                      />
-                    </button>
-                  </div>
-                  {settings.readAloud && (
-                    <>
-                      <SliderRow label="Voice speed" value={settings.speechRate} unit="x" min={0.5} max={2} step={0.1} onChange={(v) => update("speechRate", v)} />
-                      <SliderRow label="Voice pitch" value={settings.speechPitch} unit="" min={0} max={2} step={0.1} onChange={(v) => update("speechPitch", v)} />
-                      <p className="text-[11px] text-muted-foreground">
-                        While read aloud is on, the spoken voice sets the pace instead of the wpm ramp.
-                      </p>
-                    </>
-                  )}
 
                   <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
                     <span className="text-sm font-medium text-ink">Auto-pause when hidden</span>
@@ -646,6 +620,51 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
                   </div>
                   <p className="text-[11px] text-muted-foreground">
                     When off, reading continues in the background and only the wake lock is re-acquired when you return.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Read aloud — its own section */}
+            <div className="rounded-2xl border border-border bg-card/60">
+              <button
+                type="button"
+                onClick={() => setVoicePanelOpen((o) => !o)}
+                className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-ink"
+              >
+                <span className="flex items-center gap-2">
+                  <Volume2 className="h-4 w-4" /> Read aloud
+                  <span className="text-[11px] font-normal text-muted-foreground">
+                    {settings.readAloud ? "On" : "Off"}
+                  </span>
+                </span>
+                <span className="text-xs text-muted-foreground">{voicePanelOpen ? "Hide" : "Show"}</span>
+              </button>
+              {voicePanelOpen && (
+                <div className="max-h-[40vh] space-y-4 overflow-y-auto overscroll-contain border-t border-border/60 p-4">
+                  <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
+                    <span className="text-sm font-medium text-ink">Speak while reading</span>
+                    <button
+                      type="button"
+                      onClick={() => update("readAloud", !settings.readAloud)}
+                      aria-pressed={settings.readAloud}
+                      className={[
+                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                        settings.readAloud ? "bg-ember" : "bg-muted",
+                      ].join(" ")}
+                    >
+                      <span
+                        className={[
+                          "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                          settings.readAloud ? "translate-x-6" : "translate-x-1",
+                        ].join(" ")}
+                      />
+                    </button>
+                  </div>
+                  <SliderRow label="Voice speed" value={settings.speechRate} unit="x" min={0.5} max={2} step={0.1} onChange={(v) => update("speechRate", v)} />
+                  <SliderRow label="Voice pitch" value={settings.speechPitch} unit="" min={0} max={2} step={0.1} onChange={(v) => update("speechPitch", v)} />
+                  <p className="text-[11px] text-muted-foreground">
+                    While read aloud is on, the spoken voice sets the pace instead of the wpm ramp.
                   </p>
                 </div>
               )}
