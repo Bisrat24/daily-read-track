@@ -25,6 +25,9 @@ export type Settings = {
   autoPauseOnHide: boolean; // pause playback when app is hidden / screen locked
   textSize: number; // reader font size in px
   longWordDelay: number; // 0-200%, scales extra dwell for long / hyphenated words
+  readAloud: boolean; // speak the text while reading
+  speechRate: number; // 0.5 - 2.0
+  speechPitch: number; // 0 - 2
 };
 
 export const defaultSettings: Settings = {
@@ -37,7 +40,11 @@ export const defaultSettings: Settings = {
   autoPauseOnHide: true,
   textSize: 24,
   longWordDelay: 100,
+  readAloud: false,
+  speechRate: 1,
+  speechPitch: 1,
 };
+
 
 function isBrowser() {
   return typeof window !== "undefined";
