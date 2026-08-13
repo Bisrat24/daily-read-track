@@ -776,7 +776,7 @@ function NormalStage({
 }) {
   return (
     <p
-      className="font-display text-left leading-relaxed text-ink w-full max-w-prose mx-auto"
+      className="font-display text-left leading-relaxed text-ink w-full max-w-prose mr-auto break-words"
       style={{ fontSize: textSize }}
     >
       {words.map((w, i) => {
@@ -792,9 +792,11 @@ function NormalStage({
             title="Start from this word"
             onClick={() => onWordClick(abs)}
             className={[
-              "cursor-pointer rounded px-0.5 transition-colors hover:bg-ember/15",
+              // No weight / padding / ring changes on the active word so the
+              // line never reflows — colour only, keeping text perfectly still.
+              "cursor-pointer rounded transition-colors hover:bg-ember/15",
               active
-                ? "bg-ember/30 text-ink ring-1 ring-ember/50 font-semibold"
+                ? "bg-ember/30 text-ink"
                 : past
                 ? "text-muted-foreground/60"
                 : "text-ink/90",
@@ -807,3 +809,4 @@ function NormalStage({
     </p>
   );
 }
+
