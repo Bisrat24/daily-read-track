@@ -6,6 +6,7 @@ import { SpeedReader } from "@/components/reader/SpeedReader";
 import { StatsBar } from "@/components/reader/StatsBar";
 import { ProgressCalendar } from "@/components/reader/ProgressCalendar";
 import { Library } from "@/components/reader/Library";
+import { SyncPanel } from "@/components/reader/SyncPanel";
 import { Switch } from "@/components/ui/switch";
 import { applyTheme, loadTheme, type Theme } from "@/lib/stats";
 import {
@@ -161,6 +162,8 @@ function Index() {
         )}
 
         <ProgressCalendar />
+
+        <SyncPanel />
 
         <footer className="pt-2 text-center text-xs text-muted-foreground">
           Your library and progress live only on this device. Works offline once installed.

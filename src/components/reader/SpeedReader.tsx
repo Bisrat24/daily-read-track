@@ -24,7 +24,8 @@ import {
   WORDS_PER_PAGE,
   type Settings,
 } from "@/lib/stats";
-import type { ParsedBook } from "@/lib/parsers";
+import { syntheticChapters, type ParsedBook } from "@/lib/parsers";
+import { buildSentences, listVoices, startSpeaking, whenVoicesReady } from "@/lib/speech";
 import { requestWake, releaseWake, onWakeStatus, type WakeStatus } from "@/lib/wakeLock";
 
 type Props = {
@@ -210,44 +211,58 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, chunkSize, idx, settings.startWpm, settings.targetWpm, settings.rampMinutes, settings.longWordDelay, settings.readAloud, book.words.length]);
 
-  // Read-aloud mode: speech synthesis drives advancement. Each chunk is spoken
-  // and the position advances when the utterance ends.
+  // ---- Read aloud ----------------------------------------------------------
+  // Sentence-level speech with the next sentence pre-queued, so the voice reads
+  // continuously and the highlight follows the actual spoken word.
+  const sentences = useMemo(() => buildSentences(book.words), [book.words]);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  // Bumped whenever the user seeks, so speech restarts from the new spot only
+  // then (not on every highlight tick).
+  const [speechEpoch, setSpeechEpoch] = useState(0);
+  const idxRef = useRef(idx);
+  useEffect(() => { idxRef.current = idx; }, [idx]);
+
+  useEffect(() => {
+    const off = whenVoicesReady(() => setVoices(listVoices()));
+    setVoices(listVoices());
+    return off;
+  }, []);
+
   useEffect(() => {
     if (!playing || !settings.readAloud) return;
-    const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
-    if (!synth) return;
-    const text = book.words.slice(idx, idx + Math.max(1, chunkSize)).join(" ");
-    if (!text.trim()) return;
-    let cancelled = false;
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = Math.min(2, Math.max(0.5, settings.speechRate));
-    u.pitch = Math.min(2, Math.max(0, settings.speechPitch));
-    const advance = () => {
-      if (cancelled) return;
-      setIdx((i) => {
-        const next = i + Math.max(1, chunkSize);
-        if (next >= book.words.length) {
-          setPlaying(false);
-          flushRecord();
-          return book.words.length - 1;
+    let lastWord = idxRef.current;
+    const stop = startSpeaking({
+      sentences,
+      from: idxRef.current,
+      rate: settings.speechRate,
+      pitch: settings.speechPitch,
+      voiceURI: settings.speechVoiceURI,
+      onWord: (w) => {
+        const clamped = Math.max(0, Math.min(book.words.length - 1, w));
+        if (clamped > lastWord) {
+          wordsSinceRecordRef.current += clamped - lastWord;
+          if (wordsSinceRecordRef.current >= 25) flushRecord();
         }
-        wordsSinceRecordRef.current += Math.max(1, chunkSize);
-        if (wordsSinceRecordRef.current >= 25) flushRecord();
-        return next;
-      });
-    };
-    u.onend = advance;
-    u.onerror = advance;
-    synth.cancel();
-    synth.speak(u);
-    return () => {
-      cancelled = true;
-      u.onend = null;
-      u.onerror = null;
-      synth.cancel();
-    };
+        lastWord = clamped;
+        setIdx(clamped);
+      },
+      onFinish: () => {
+        setPlaying(false);
+        flushRecord();
+      },
+    });
+    return () => stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, settings.readAloud, settings.speechRate, settings.speechPitch, idx, chunkSize, book.words]);
+  }, [
+    playing,
+    settings.readAloud,
+    settings.speechRate,
+    settings.speechPitch,
+    settings.speechVoiceURI,
+    sentences,
+    speechEpoch,
+  ]);
+
 
 
 
@@ -300,22 +315,53 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     return { start: windowStart, end, slice };
   }, [windowStart, settings.mode, book.words]);
 
+  // Any deliberate jump restarts the voice from the new spot.
+  function markSeek() {
+    lastTickRef.current = 0;
+    if (settings.readAloud) setSpeechEpoch((e) => e + 1);
+  }
+
   function jumpToPage(p: number) {
     const clamped = Math.max(1, Math.min(totalPages, Math.floor(p)));
     setIdx((clamped - 1) * WORDS_PER_PAGE);
-    lastTickRef.current = 0;
+    markSeek();
   }
 
   function step(delta: number) {
     setIdx((i) => Math.max(0, Math.min(book.words.length - 1, i + delta)));
-    lastTickRef.current = 0;
+    markSeek();
   }
 
   function seekTo(wordIndex: number) {
     const clamped = Math.max(0, Math.min(book.words.length - 1, Math.floor(wordIndex)));
     setIdx(clamped);
-    lastTickRef.current = 0;
+    markSeek();
   }
+
+  // ---- Chapters ------------------------------------------------------------
+  const chapters = useMemo(() => {
+    const list = book.chapters?.length ? book.chapters : syntheticChapters(book.words.length);
+    return list.filter((c) => c.start < book.words.length);
+  }, [book.chapters, book.words.length]);
+
+  const chapterIdx = useMemo(() => {
+    let found = 0;
+    for (let i = 0; i < chapters.length; i++) if (chapters[i].start <= idx) found = i;
+    return found;
+  }, [chapters, idx]);
+
+  const chapter = chapters[chapterIdx];
+  const chapterEnd = chapters[chapterIdx + 1]?.start ?? book.words.length;
+  const chapterPct = chapter
+    ? Math.round(((idx - chapter.start) / Math.max(1, chapterEnd - chapter.start)) * 100)
+    : 0;
+
+  function goChapter(delta: number) {
+    const target = Math.max(0, Math.min(chapters.length - 1, chapterIdx + delta));
+    seekTo(chapters[target].start);
+  }
+
+
 
   // Play button handler — acquires wake lock inline in the user gesture.
   // Toggles reading; play minimizes the settings panel, pause maximizes it.
@@ -498,6 +544,69 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
       {!immersive && (
         <>
           <div className="space-y-1.5 px-6">
+            {/* Chapter header + chapter jump */}
+            {chapters.length > 1 && chapter && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => goChapter(-1)}
+                  disabled={chapterIdx === 0}
+                  className="rounded-full p-1 text-muted-foreground hover:bg-secondary disabled:opacity-30"
+                  aria-label="Previous chapter"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <div className="min-w-0 flex-1 text-center">
+                  <p className="truncate text-[11px] font-medium text-ink">
+                    {chapter.title}
+                  </p>
+                  <p className="text-[10px] tabular-nums text-muted-foreground">
+                    Chapter {chapterIdx + 1} of {chapters.length} · {chapterPct}% of chapter
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => goChapter(1)}
+                  disabled={chapterIdx >= chapters.length - 1}
+                  className="rounded-full p-1 text-muted-foreground hover:bg-secondary disabled:opacity-30"
+                  aria-label="Next chapter"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Chapter-segmented progress bar — one segment per chapter */}
+            {chapters.length > 1 && (
+              <div className="flex h-2 w-full gap-[2px] overflow-hidden rounded-full">
+                {chapters.map((c, i) => {
+                  const end = chapters[i + 1]?.start ?? book.words.length;
+                  const span = Math.max(1, end - c.start);
+                  const fill =
+                    idx >= end ? 100 : idx <= c.start ? 0 : ((idx - c.start) / span) * 100;
+                  return (
+                    <button
+                      key={`${c.start}-${i}`}
+                      type="button"
+                      onClick={() => seekTo(c.start)}
+                      title={`${c.title} — ${Math.round(fill)}%`}
+                      aria-label={`Jump to ${c.title}`}
+                      className={[
+                        "relative h-full overflow-hidden rounded-full bg-secondary transition-opacity hover:opacity-80",
+                        i === chapterIdx ? "ring-1 ring-ember/60" : "",
+                      ].join(" ")}
+                      style={{ flexGrow: span }}
+                    >
+                      <span
+                        className="absolute inset-y-0 left-0 bg-ember"
+                        style={{ width: `${fill}%` }}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <Slider
               value={[idx]}
               min={0}
@@ -508,9 +617,10 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             />
             <div className="flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">
               <span>Page {pageNum} of {totalPages}</span>
-              <span>{Math.round((idx / Math.max(1, book.words.length - 1)) * 100)}%</span>
+              <span>{Math.round((idx / Math.max(1, book.words.length - 1)) * 100)}% of book</span>
             </div>
           </div>
+
 
           <div className="max-h-[60vh] space-y-5 overflow-y-auto overscroll-contain p-6 pt-4">
             {/* Transport */}
@@ -661,11 +771,28 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
                       />
                     </button>
                   </div>
-                  <SliderRow label="Voice speed" value={settings.speechRate} unit="x" min={0.5} max={2} step={0.1} onChange={(v) => update("speechRate", v)} />
-                  <SliderRow label="Voice pitch" value={settings.speechPitch} unit="" min={0} max={2} step={0.1} onChange={(v) => update("speechPitch", v)} />
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-medium text-ink">Voice</span>
+                    <select
+                      value={settings.speechVoiceURI}
+                      onChange={(e) => { update("speechVoiceURI", e.target.value); setSpeechEpoch((n) => n + 1); }}
+                      className="h-9 w-full rounded-lg border border-border bg-background px-2 text-sm text-ink"
+                    >
+                      <option value="">Auto — most natural available</option>
+                      {voices.map((v) => (
+                        <option key={v.voiceURI} value={v.voiceURI}>
+                          {v.name} ({v.lang}){v.localService ? "" : " · online"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <SliderRow label="Voice speed" value={settings.speechRate} unit="x" min={0.5} max={2} step={0.1} onChange={(v) => { update("speechRate", v); setSpeechEpoch((n) => n + 1); }} />
+                  <SliderRow label="Voice pitch" value={settings.speechPitch} unit="" min={0} max={2} step={0.1} onChange={(v) => { update("speechPitch", v); setSpeechEpoch((n) => n + 1); }} />
                   <p className="text-[11px] text-muted-foreground">
-                    While read aloud is on, the spoken voice sets the pace instead of the wpm ramp.
+                    Read aloud speaks full sentences and keeps the next one queued, so the voice
+                    flows without gaps and the highlight follows the spoken word.
                   </p>
+
                 </div>
               )}
             </div>

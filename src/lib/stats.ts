@@ -28,6 +28,7 @@ export type Settings = {
   readAloud: boolean; // speak the text while reading
   speechRate: number; // 0.5 - 2.0
   speechPitch: number; // 0 - 2
+  speechVoiceURI: string; // "" = auto-pick the most natural voice
 };
 
 export const defaultSettings: Settings = {
@@ -43,6 +44,7 @@ export const defaultSettings: Settings = {
   readAloud: false,
   speechRate: 1,
   speechPitch: 1,
+  speechVoiceURI: "",
 };
 
 

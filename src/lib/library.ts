@@ -5,7 +5,7 @@
 // localStorage would blow past the 5MB quota on any real book.
 
 import { idbDel, idbGet, idbSet } from "@/lib/idb";
-import type { ParsedBook } from "@/lib/parsers";
+import { syntheticChapters, type Chapter, type ParsedBook } from "@/lib/parsers";
 
 export const LIBRARY_KEY = "pace.library.v1";
 export const ACTIVE_BOOK_KEY = "pace.activeBook.v1";
@@ -17,6 +17,7 @@ export type LibraryBook = {
   position: number;
   addedAt: number;
   lastReadAt: number;
+  chapters?: Chapter[];
 };
 
 function isBrowser() {
@@ -71,6 +72,7 @@ export async function addBookToLibrary(book: ParsedBook): Promise<LibraryBook> {
     position: 0,
     addedAt: now,
     lastReadAt: now,
+    chapters: book.chapters?.length ? book.chapters : syntheticChapters(book.words.length),
   };
   await idbSet(wordsKey(id), book.words);
   const list = loadLibrary();
@@ -88,7 +90,8 @@ export async function getFullBook(id: string): Promise<{ meta: LibraryBook; book
   if (!meta) return null;
   const words = await loadBookWords(id);
   if (!words) return null;
-  return { meta, book: { title: meta.title, words } };
+  const chapters = meta.chapters?.length ? meta.chapters : syntheticChapters(words.length);
+  return { meta, book: { title: meta.title, words, chapters } };
 }
 
 export function updateBookPosition(id: string, position: number) {
