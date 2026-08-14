@@ -25,6 +25,7 @@ import {
   type Settings,
 } from "@/lib/stats";
 import type { ParsedBook } from "@/lib/parsers";
+import { buildSentences, listVoices, startSpeaking, whenVoicesReady } from "@/lib/speech";
 import { requestWake, releaseWake, onWakeStatus, type WakeStatus } from "@/lib/wakeLock";
 
 type Props = {
