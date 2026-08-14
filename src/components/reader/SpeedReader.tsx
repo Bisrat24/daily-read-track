@@ -544,6 +544,69 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
       {!immersive && (
         <>
           <div className="space-y-1.5 px-6">
+            {/* Chapter header + chapter jump */}
+            {chapters.length > 1 && chapter && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => goChapter(-1)}
+                  disabled={chapterIdx === 0}
+                  className="rounded-full p-1 text-muted-foreground hover:bg-secondary disabled:opacity-30"
+                  aria-label="Previous chapter"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <div className="min-w-0 flex-1 text-center">
+                  <p className="truncate text-[11px] font-medium text-ink">
+                    {chapter.title}
+                  </p>
+                  <p className="text-[10px] tabular-nums text-muted-foreground">
+                    Chapter {chapterIdx + 1} of {chapters.length} · {chapterPct}% of chapter
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => goChapter(1)}
+                  disabled={chapterIdx >= chapters.length - 1}
+                  className="rounded-full p-1 text-muted-foreground hover:bg-secondary disabled:opacity-30"
+                  aria-label="Next chapter"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Chapter-segmented progress bar — one segment per chapter */}
+            {chapters.length > 1 && (
+              <div className="flex h-2 w-full gap-[2px] overflow-hidden rounded-full">
+                {chapters.map((c, i) => {
+                  const end = chapters[i + 1]?.start ?? book.words.length;
+                  const span = Math.max(1, end - c.start);
+                  const fill =
+                    idx >= end ? 100 : idx <= c.start ? 0 : ((idx - c.start) / span) * 100;
+                  return (
+                    <button
+                      key={`${c.start}-${i}`}
+                      type="button"
+                      onClick={() => seekTo(c.start)}
+                      title={`${c.title} — ${Math.round(fill)}%`}
+                      aria-label={`Jump to ${c.title}`}
+                      className={[
+                        "relative h-full overflow-hidden rounded-full bg-secondary transition-opacity hover:opacity-80",
+                        i === chapterIdx ? "ring-1 ring-ember/60" : "",
+                      ].join(" ")}
+                      style={{ flexGrow: span }}
+                    >
+                      <span
+                        className="absolute inset-y-0 left-0 bg-ember"
+                        style={{ width: `${fill}%` }}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <Slider
               value={[idx]}
               min={0}
@@ -554,9 +617,10 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
             />
             <div className="flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">
               <span>Page {pageNum} of {totalPages}</span>
-              <span>{Math.round((idx / Math.max(1, book.words.length - 1)) * 100)}%</span>
+              <span>{Math.round((idx / Math.max(1, book.words.length - 1)) * 100)}% of book</span>
             </div>
           </div>
+
 
           <div className="max-h-[60vh] space-y-5 overflow-y-auto overscroll-contain p-6 pt-4">
             {/* Transport */}
