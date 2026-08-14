@@ -771,11 +771,28 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
                       />
                     </button>
                   </div>
-                  <SliderRow label="Voice speed" value={settings.speechRate} unit="x" min={0.5} max={2} step={0.1} onChange={(v) => update("speechRate", v)} />
-                  <SliderRow label="Voice pitch" value={settings.speechPitch} unit="" min={0} max={2} step={0.1} onChange={(v) => update("speechPitch", v)} />
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-medium text-ink">Voice</span>
+                    <select
+                      value={settings.speechVoiceURI}
+                      onChange={(e) => { update("speechVoiceURI", e.target.value); setSpeechEpoch((n) => n + 1); }}
+                      className="h-9 w-full rounded-lg border border-border bg-background px-2 text-sm text-ink"
+                    >
+                      <option value="">Auto — most natural available</option>
+                      {voices.map((v) => (
+                        <option key={v.voiceURI} value={v.voiceURI}>
+                          {v.name} ({v.lang}){v.localService ? "" : " · online"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <SliderRow label="Voice speed" value={settings.speechRate} unit="x" min={0.5} max={2} step={0.1} onChange={(v) => { update("speechRate", v); setSpeechEpoch((n) => n + 1); }} />
+                  <SliderRow label="Voice pitch" value={settings.speechPitch} unit="" min={0} max={2} step={0.1} onChange={(v) => { update("speechPitch", v); setSpeechEpoch((n) => n + 1); }} />
                   <p className="text-[11px] text-muted-foreground">
-                    While read aloud is on, the spoken voice sets the pace instead of the wpm ramp.
+                    Read aloud speaks full sentences and keeps the next one queued, so the voice
+                    flows without gaps and the highlight follows the spoken word.
                   </p>
+
                 </div>
               )}
             </div>
