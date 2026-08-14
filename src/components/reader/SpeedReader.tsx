@@ -210,44 +210,58 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, chunkSize, idx, settings.startWpm, settings.targetWpm, settings.rampMinutes, settings.longWordDelay, settings.readAloud, book.words.length]);
 
-  // Read-aloud mode: speech synthesis drives advancement. Each chunk is spoken
-  // and the position advances when the utterance ends.
+  // ---- Read aloud ----------------------------------------------------------
+  // Sentence-level speech with the next sentence pre-queued, so the voice reads
+  // continuously and the highlight follows the actual spoken word.
+  const sentences = useMemo(() => buildSentences(book.words), [book.words]);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  // Bumped whenever the user seeks, so speech restarts from the new spot only
+  // then (not on every highlight tick).
+  const [speechEpoch, setSpeechEpoch] = useState(0);
+  const idxRef = useRef(idx);
+  useEffect(() => { idxRef.current = idx; }, [idx]);
+
+  useEffect(() => {
+    const off = whenVoicesReady(() => setVoices(listVoices()));
+    setVoices(listVoices());
+    return off;
+  }, []);
+
   useEffect(() => {
     if (!playing || !settings.readAloud) return;
-    const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
-    if (!synth) return;
-    const text = book.words.slice(idx, idx + Math.max(1, chunkSize)).join(" ");
-    if (!text.trim()) return;
-    let cancelled = false;
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = Math.min(2, Math.max(0.5, settings.speechRate));
-    u.pitch = Math.min(2, Math.max(0, settings.speechPitch));
-    const advance = () => {
-      if (cancelled) return;
-      setIdx((i) => {
-        const next = i + Math.max(1, chunkSize);
-        if (next >= book.words.length) {
-          setPlaying(false);
-          flushRecord();
-          return book.words.length - 1;
+    let lastWord = idxRef.current;
+    const stop = startSpeaking({
+      sentences,
+      from: idxRef.current,
+      rate: settings.speechRate,
+      pitch: settings.speechPitch,
+      voiceURI: settings.speechVoiceURI,
+      onWord: (w) => {
+        const clamped = Math.max(0, Math.min(book.words.length - 1, w));
+        if (clamped > lastWord) {
+          wordsSinceRecordRef.current += clamped - lastWord;
+          if (wordsSinceRecordRef.current >= 25) flushRecord();
         }
-        wordsSinceRecordRef.current += Math.max(1, chunkSize);
-        if (wordsSinceRecordRef.current >= 25) flushRecord();
-        return next;
-      });
-    };
-    u.onend = advance;
-    u.onerror = advance;
-    synth.cancel();
-    synth.speak(u);
-    return () => {
-      cancelled = true;
-      u.onend = null;
-      u.onerror = null;
-      synth.cancel();
-    };
+        lastWord = clamped;
+        setIdx(clamped);
+      },
+      onFinish: () => {
+        setPlaying(false);
+        flushRecord();
+      },
+    });
+    return () => stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, settings.readAloud, settings.speechRate, settings.speechPitch, idx, chunkSize, book.words]);
+  }, [
+    playing,
+    settings.readAloud,
+    settings.speechRate,
+    settings.speechPitch,
+    settings.speechVoiceURI,
+    sentences,
+    speechEpoch,
+  ]);
+
 
 
 
