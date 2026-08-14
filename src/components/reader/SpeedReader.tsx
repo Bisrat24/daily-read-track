@@ -315,22 +315,53 @@ export function SpeedReader({ book, position, onPosition, onClose }: Props) {
     return { start: windowStart, end, slice };
   }, [windowStart, settings.mode, book.words]);
 
+  // Any deliberate jump restarts the voice from the new spot.
+  function markSeek() {
+    lastTickRef.current = 0;
+    if (settings.readAloud) setSpeechEpoch((e) => e + 1);
+  }
+
   function jumpToPage(p: number) {
     const clamped = Math.max(1, Math.min(totalPages, Math.floor(p)));
     setIdx((clamped - 1) * WORDS_PER_PAGE);
-    lastTickRef.current = 0;
+    markSeek();
   }
 
   function step(delta: number) {
     setIdx((i) => Math.max(0, Math.min(book.words.length - 1, i + delta)));
-    lastTickRef.current = 0;
+    markSeek();
   }
 
   function seekTo(wordIndex: number) {
     const clamped = Math.max(0, Math.min(book.words.length - 1, Math.floor(wordIndex)));
     setIdx(clamped);
-    lastTickRef.current = 0;
+    markSeek();
   }
+
+  // ---- Chapters ------------------------------------------------------------
+  const chapters = useMemo(() => {
+    const list = book.chapters?.length ? book.chapters : syntheticChapters(book.words.length);
+    return list.filter((c) => c.start < book.words.length);
+  }, [book.chapters, book.words.length]);
+
+  const chapterIdx = useMemo(() => {
+    let found = 0;
+    for (let i = 0; i < chapters.length; i++) if (chapters[i].start <= idx) found = i;
+    return found;
+  }, [chapters, idx]);
+
+  const chapter = chapters[chapterIdx];
+  const chapterEnd = chapters[chapterIdx + 1]?.start ?? book.words.length;
+  const chapterPct = chapter
+    ? Math.round(((idx - chapter.start) / Math.max(1, chapterEnd - chapter.start)) * 100)
+    : 0;
+
+  function goChapter(delta: number) {
+    const target = Math.max(0, Math.min(chapters.length - 1, chapterIdx + delta));
+    seekTo(chapters[target].start);
+  }
+
+
 
   // Play button handler — acquires wake lock inline in the user gesture.
   // Toggles reading; play minimizes the settings panel, pause maximizes it.
