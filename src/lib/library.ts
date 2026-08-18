@@ -18,6 +18,8 @@ export type LibraryBook = {
   addedAt: number;
   lastReadAt: number;
   chapters?: Chapter[];
+  /** True when the entry came from cloud sync and the file isn't on this device yet. */
+  remote?: boolean;
 };
 
 function isBrowser() {
