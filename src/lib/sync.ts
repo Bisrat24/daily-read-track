@@ -88,24 +88,41 @@ export function applyPayload(payload: SyncPayload) {
   saveStats({ events: mergeEvents(loadStats().events, payload.stats?.events ?? []) });
   if (payload.settings) saveSettings({ ...defaultSettings, ...payload.settings });
 
-  // Per-book positions: keep whichever side was read most recently.
+  // Per-book positions: keep whichever side was read most recently. Titles that
+  // don't exist here yet are added as placeholders so the shelf matches across
+  // devices; opening one just asks for the file.
   const local = loadLibrary();
   let changed = false;
+  const newTitles: SyncPayload["books"] = [];
   for (const remote of payload.books ?? []) {
     const match = local.find((b) => b.title === remote.title);
-    if (!match) continue;
+    if (!match) {
+      newTitles.push(remote);
+      continue;
+    }
     if ((remote.lastReadAt ?? 0) > (match.lastReadAt ?? 0)) {
-      match.position = Math.max(0, Math.min(remote.position, match.wordCount));
+      match.position = match.remote
+        ? remote.position
+        : Math.max(0, Math.min(remote.position, match.wordCount));
       match.lastReadAt = remote.lastReadAt;
       changed = true;
     }
   }
   if (changed) saveLibrary(local);
+  for (const t of newTitles) {
+    upsertRemoteBook({
+      title: t.title,
+      wordCount: t.wordCount ?? 0,
+      position: t.position ?? 0,
+      lastReadAt: t.lastReadAt ?? 0,
+    });
+  }
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("pace:stats-changed"));
     window.dispatchEvent(new Event("pace:library-changed"));
   }
 }
+
 
 export async function pushProgress(userId: string) {
   const payload = buildPayload();
