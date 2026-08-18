@@ -150,8 +150,56 @@ export async function pullProgress() {
 export async function fetchRemoteMeta() {
   const { data, error } = await supabase
     .from("reading_progress")
-    .select("device, updated_at")
+    .select("device, updated_at, payload")
     .maybeSingle();
-  if (error) return null;
-  return data ?? null;
+  if (error || !data) return null;
+  const payload = data.payload as unknown as SyncPayload | null;
+  return {
+    device: data.device as string | null,
+    updated_at: data.updated_at as string,
+    totals: payload?.totals ?? null,
+    bookCount: payload?.books?.length ?? 0,
+  };
 }
+
+// ---- Auto sync --------------------------------------------------------------
+// Debounced background backup so progress, titles and the day's counters stay
+// current on every signed-in device without the user pressing anything.
+
+let timer: ReturnType<typeof setTimeout> | null = null;
+
+export function scheduleAutoPush(userId: string, delayMs = 10_000) {
+  if (typeof window === "undefined") return;
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(() => {
+    timer = null;
+    void pushProgress(userId).catch(() => {});
+  }, delayMs);
+}
+
+export function cancelAutoPush() {
+  if (timer) clearTimeout(timer);
+  timer = null;
+}
+
+/** Wires change events → debounced push. Returns a cleanup function. */
+export function startAutoSync(userId: string) {
+  if (typeof window === "undefined") return () => {};
+  const onChange = () => scheduleAutoPush(userId);
+  const onHide = () => {
+    if (document.visibilityState === "hidden") {
+      cancelAutoPush();
+      void pushProgress(userId).catch(() => {});
+    }
+  };
+  window.addEventListener("pace:stats-changed", onChange);
+  window.addEventListener("pace:library-changed", onChange);
+  document.addEventListener("visibilitychange", onHide);
+  return () => {
+    cancelAutoPush();
+    window.removeEventListener("pace:stats-changed", onChange);
+    window.removeEventListener("pace:library-changed", onChange);
+    document.removeEventListener("visibilitychange", onHide);
+  };
+}
+
