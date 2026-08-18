@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
-import { fetchRemoteMeta, pullProgress, pushProgress } from "@/lib/sync";
+import { fetchRemoteMeta, pullProgress, pushProgress, startAutoSync } from "@/lib/sync";
+
+type RemoteMeta = Awaited<ReturnType<typeof fetchRemoteMeta>>;
 
 export function SyncPanel() {
   const [session, setSession] = useState<Session | null>(null);
@@ -14,7 +16,7 @@ export function SyncPanel() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<null | "in" | "up" | "google" | "push" | "pull">(null);
-  const [remote, setRemote] = useState<{ device: string | null; updated_at: string } | null>(null);
+  const [remote, setRemote] = useState<RemoteMeta>(null);
 
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
@@ -22,10 +24,26 @@ export function SyncPanel() {
     return () => data.subscription.unsubscribe();
   }, []);
 
+  // On sign-in: pull once, then keep a debounced background backup running.
   useEffect(() => {
     if (!session) { setRemote(null); return; }
-    void fetchRemoteMeta().then((m) => setRemote(m as typeof remote));
+    const userId = session.user.id;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await pullProgress();
+      } catch {
+        /* offline or nothing saved yet */
+      }
+      if (cancelled) return;
+      setRemote(await fetchRemoteMeta());
+      await pushProgress(userId).catch(() => {});
+      if (!cancelled) setRemote(await fetchRemoteMeta());
+    })();
+    const stop = startAutoSync(userId);
+    return () => { cancelled = true; stop(); };
   }, [session]);
+
 
   async function signIn(mode: "in" | "up") {
     setBusy(mode);
@@ -59,7 +77,7 @@ export function SyncPanel() {
     setBusy("push");
     try {
       await pushProgress(session.user.id);
-      setRemote(await fetchRemoteMeta() as typeof remote);
+      setRemote(await fetchRemoteMeta());
       toast.success("Progress backed up to your account.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Backup failed.");
@@ -71,6 +89,7 @@ export function SyncPanel() {
     setBusy("pull");
     try {
       const res = await pullProgress();
+      setRemote(await fetchRemoteMeta());
       toast.success(res ? "Progress merged from your account." : "No cloud backup found yet.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Restore failed.");
@@ -150,9 +169,27 @@ export function SyncPanel() {
             <>
               <p className="text-xs text-muted-foreground">
                 {remote
-                  ? `Last backup ${new Date(remote.updated_at).toLocaleString()}${remote.device ? ` from ${remote.device}` : ""}.`
+                  ? `Last backup ${new Date(remote.updated_at).toLocaleString()}${remote.device ? ` from ${remote.device}` : ""} · ${remote.bookCount} title${remote.bookCount === 1 ? "" : "s"}.`
                   : "No backup saved yet."}
               </p>
+              {remote?.totals && (
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-xl border border-border bg-card/70 p-2">
+                    <div className="uppercase tracking-wider text-muted-foreground">Last hour (synced)</div>
+                    <div className="font-display text-base font-semibold text-ink">
+                      {remote.totals.hourPages.toFixed(1)} pages
+                    </div>
+                    <div className="text-muted-foreground">{remote.totals.hourWords.toLocaleString()} words</div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card/70 p-2">
+                    <div className="uppercase tracking-wider text-muted-foreground">That day (synced)</div>
+                    <div className="font-display text-base font-semibold text-ink">
+                      {remote.totals.todayPages.toFixed(1)} pages
+                    </div>
+                    <div className="text-muted-foreground">{remote.totals.todayWords.toLocaleString()} words</div>
+                  </div>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 <Button
                   onClick={() => void backUp()}
@@ -176,8 +213,9 @@ export function SyncPanel() {
                 </Button>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Book files stay on this device — sync carries your calendar, settings, and the
-                position of books with matching titles.
+                Backs up automatically while you read. Book files stay on this device — sync
+                carries titles, progress, your calendar and settings; a synced title appears
+                greyed out until you add its file here.
               </p>
             </>
           )}

@@ -47,7 +47,11 @@ export function Library({ activeId, onOpen }: Props) {
             <li
               key={b.id}
               className={`rounded-2xl border p-3 transition-colors ${
-                isActive ? "border-ember/60 bg-ember/5" : "border-border bg-card/60"
+                isActive
+                  ? "border-ember/60 bg-ember/5"
+                  : b.remote
+                    ? "border-dashed border-border bg-card/30"
+                    : "border-border bg-card/60"
               }`}
             >
               <div className="flex items-start gap-3">
@@ -77,7 +81,7 @@ export function Library({ activeId, onOpen }: Props) {
                   ) : (
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => onOpen(b.id)}
+                        onClick={() => { if (!b.remote) onOpen(b.id); }}
                         className="min-w-0 flex-1 truncate text-left font-display text-base font-semibold text-ink hover:text-ember"
                       >
                         {b.title}
@@ -90,20 +94,28 @@ export function Library({ activeId, onOpen }: Props) {
                     </div>
                   )}
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {pct}% · {b.position.toLocaleString()} / {b.wordCount.toLocaleString()} words
+                    {b.remote
+                      ? `Synced from another device · ${pct}% read · add the file here to continue`
+                      : `${pct}% · ${b.position.toLocaleString()} / ${b.wordCount.toLocaleString()} words`}
                   </p>
                   <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
                     <div className="h-full bg-ember" style={{ width: `${pct}%` }} />
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-1">
-                    <Button
-                      size="sm"
-                      onClick={() => onOpen(b.id)}
-                      className="h-8 gap-1.5 bg-ember text-ember-foreground hover:bg-ember/90"
-                    >
-                      <Play className="h-3.5 w-3.5" />
-                      {b.position > 0 ? "Continue" : "Start"}
-                    </Button>
+                    {b.remote ? (
+                      <span className="rounded-full border border-border px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                        File not on this device
+                      </span>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => onOpen(b.id)}
+                        className="h-8 gap-1.5 bg-ember text-ember-foreground hover:bg-ember/90"
+                      >
+                        <Play className="h-3.5 w-3.5" />
+                        {b.position > 0 ? "Continue" : "Start"}
+                      </Button>
+                    )}
                     {!isEditing && (
                       <Button
                         size="icon"
