@@ -77,7 +77,7 @@ export function SyncPanel() {
     setBusy("push");
     try {
       await pushProgress(session.user.id);
-      setRemote(await fetchRemoteMeta() as typeof remote);
+      setRemote(await fetchRemoteMeta());
       toast.success("Progress backed up to your account.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Backup failed.");
