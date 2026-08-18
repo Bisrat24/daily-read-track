@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
-import { fetchRemoteMeta, pullProgress, pushProgress } from "@/lib/sync";
+import { fetchRemoteMeta, pullProgress, pushProgress, startAutoSync } from "@/lib/sync";
+
+type RemoteMeta = Awaited<ReturnType<typeof fetchRemoteMeta>>;
 
 export function SyncPanel() {
   const [session, setSession] = useState<Session | null>(null);
@@ -14,7 +16,7 @@ export function SyncPanel() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<null | "in" | "up" | "google" | "push" | "pull">(null);
-  const [remote, setRemote] = useState<{ device: string | null; updated_at: string } | null>(null);
+  const [remote, setRemote] = useState<RemoteMeta>(null);
 
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
@@ -22,10 +24,26 @@ export function SyncPanel() {
     return () => data.subscription.unsubscribe();
   }, []);
 
+  // On sign-in: pull once, then keep a debounced background backup running.
   useEffect(() => {
     if (!session) { setRemote(null); return; }
-    void fetchRemoteMeta().then((m) => setRemote(m as typeof remote));
+    const userId = session.user.id;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await pullProgress();
+      } catch {
+        /* offline or nothing saved yet */
+      }
+      if (cancelled) return;
+      setRemote(await fetchRemoteMeta());
+      await pushProgress(userId).catch(() => {});
+      if (!cancelled) setRemote(await fetchRemoteMeta());
+    })();
+    const stop = startAutoSync(userId);
+    return () => { cancelled = true; stop(); };
   }, [session]);
+
 
   async function signIn(mode: "in" | "up") {
     setBusy(mode);
