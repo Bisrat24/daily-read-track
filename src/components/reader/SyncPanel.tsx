@@ -213,8 +213,9 @@ export function SyncPanel() {
                 </Button>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Book files stay on this device — sync carries your calendar, settings, and the
-                position of books with matching titles.
+                Backs up automatically while you read. Book files stay on this device — sync
+                carries titles, progress, your calendar and settings; a synced title appears
+                greyed out until you add its file here.
               </p>
             </>
           )}
