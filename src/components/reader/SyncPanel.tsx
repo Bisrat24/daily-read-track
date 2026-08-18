@@ -89,6 +89,7 @@ export function SyncPanel() {
     setBusy("pull");
     try {
       const res = await pullProgress();
+      setRemote(await fetchRemoteMeta());
       toast.success(res ? "Progress merged from your account." : "No cloud backup found yet.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Restore failed.");
