@@ -169,9 +169,27 @@ export function SyncPanel() {
             <>
               <p className="text-xs text-muted-foreground">
                 {remote
-                  ? `Last backup ${new Date(remote.updated_at).toLocaleString()}${remote.device ? ` from ${remote.device}` : ""}.`
+                  ? `Last backup ${new Date(remote.updated_at).toLocaleString()}${remote.device ? ` from ${remote.device}` : ""} · ${remote.bookCount} title${remote.bookCount === 1 ? "" : "s"}.`
                   : "No backup saved yet."}
               </p>
+              {remote?.totals && (
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-xl border border-border bg-card/70 p-2">
+                    <div className="uppercase tracking-wider text-muted-foreground">Last hour (synced)</div>
+                    <div className="font-display text-base font-semibold text-ink">
+                      {remote.totals.hourPages.toFixed(1)} pages
+                    </div>
+                    <div className="text-muted-foreground">{remote.totals.hourWords.toLocaleString()} words</div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card/70 p-2">
+                    <div className="uppercase tracking-wider text-muted-foreground">That day (synced)</div>
+                    <div className="font-display text-base font-semibold text-ink">
+                      {remote.totals.todayPages.toFixed(1)} pages
+                    </div>
+                    <div className="text-muted-foreground">{remote.totals.todayWords.toLocaleString()} words</div>
+                  </div>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 <Button
                   onClick={() => void backUp()}
