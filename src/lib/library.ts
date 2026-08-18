@@ -67,21 +67,60 @@ export function setActiveBookId(id: string | null) {
 export async function addBookToLibrary(book: ParsedBook): Promise<LibraryBook> {
   const id = newId();
   const now = Date.now();
+  const list = loadLibrary();
+  // If cloud sync already brought in this title as a placeholder, adopt its
+  // saved position so the file lands exactly where the other device left off.
+  const placeholderIdx = list.findIndex((b) => b.remote && b.title === book.title);
+  const placeholder = placeholderIdx >= 0 ? list[placeholderIdx] : null;
+  const wordCount = book.words.length;
   const entry: LibraryBook = {
     id,
     title: book.title,
-    wordCount: book.words.length,
-    position: 0,
+    wordCount,
+    position: placeholder
+      ? Math.max(0, Math.min(Math.round((placeholder.position / Math.max(1, placeholder.wordCount)) * wordCount), wordCount))
+      : 0,
     addedAt: now,
-    lastReadAt: now,
-    chapters: book.chapters?.length ? book.chapters : syntheticChapters(book.words.length),
+    lastReadAt: placeholder?.lastReadAt ?? now,
+    chapters: book.chapters?.length ? book.chapters : syntheticChapters(wordCount),
   };
   await idbSet(wordsKey(id), book.words);
-  const list = loadLibrary();
+  if (placeholderIdx >= 0) list.splice(placeholderIdx, 1);
   list.unshift(entry);
   saveLibrary(list);
   return entry;
 }
+
+/** Add/refresh a title that exists only in the cloud backup (no file locally). */
+export function upsertRemoteBook(meta: {
+  title: string;
+  wordCount: number;
+  position: number;
+  lastReadAt: number;
+}) {
+  const list = loadLibrary();
+  const existing = list.find((b) => b.title === meta.title);
+  if (existing) {
+    if (existing.remote && (meta.lastReadAt ?? 0) >= (existing.lastReadAt ?? 0)) {
+      existing.position = meta.position;
+      existing.wordCount = meta.wordCount;
+      existing.lastReadAt = meta.lastReadAt;
+      saveLibrary(list);
+    }
+    return;
+  }
+  list.push({
+    id: newId(),
+    title: meta.title,
+    wordCount: meta.wordCount,
+    position: meta.position,
+    addedAt: Date.now(),
+    lastReadAt: meta.lastReadAt || Date.now(),
+    remote: true,
+  });
+  saveLibrary(list);
+}
+
 
 export async function loadBookWords(id: string): Promise<string[] | null> {
   return await idbGet<string[]>(wordsKey(id));
