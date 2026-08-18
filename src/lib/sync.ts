@@ -4,13 +4,16 @@
 // second device (or a reinstall) can pick up where you left off.
 
 import { supabase } from "@/integrations/supabase/client";
-import { loadLibrary, saveLibrary } from "@/lib/library";
+import { loadLibrary, saveLibrary, upsertRemoteBook } from "@/lib/library";
 import {
   defaultSettings,
   loadSettings,
   loadStats,
+  pagesFromWords,
   saveSettings,
   saveStats,
+  wordsLastHour,
+  wordsToday,
   type ReadingEvent,
   type Settings,
   type Stats,
@@ -21,8 +24,15 @@ export type SyncPayload = {
   savedAt: number;
   stats: Stats;
   settings: Settings;
-  /** Book positions keyed by title so they match across devices. */
+  /** Book titles + progress, keyed by title so they match across devices. */
   books: { title: string; wordCount: number; position: number; lastReadAt: number }[];
+  /** Snapshot of the reading counters at backup time (display only). */
+  totals?: {
+    hourWords: number;
+    hourPages: number;
+    todayWords: number;
+    todayPages: number;
+  };
 };
 
 function deviceName() {
@@ -36,10 +46,13 @@ function deviceName() {
 }
 
 export function buildPayload(): SyncPayload {
+  const stats = loadStats();
+  const hourWords = wordsLastHour(stats);
+  const todayWords = wordsToday(stats);
   return {
     version: 1,
     savedAt: Date.now(),
-    stats: loadStats(),
+    stats,
     settings: loadSettings(),
     books: loadLibrary().map((b) => ({
       title: b.title,
@@ -47,8 +60,15 @@ export function buildPayload(): SyncPayload {
       position: b.position,
       lastReadAt: b.lastReadAt,
     })),
+    totals: {
+      hourWords,
+      hourPages: pagesFromWords(hourWords),
+      todayWords,
+      todayPages: pagesFromWords(todayWords),
+    },
   };
 }
+
 
 function mergeEvents(local: ReadingEvent[], remote: ReadingEvent[]): ReadingEvent[] {
   const seen = new Set(local.map((e) => `${e.at}:${e.words}`));
