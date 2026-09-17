@@ -30,7 +30,7 @@ async function findCached(file: File): Promise<ParsedBook | null> {
   return list.find((e) => e.key === key)?.book ?? null;
 }
 
-export function Uploader({ onLoaded }: { onLoaded: (book: ParsedBook) => void }) {
+export function Uploader({ onLoaded }: { onLoaded: (book: ParsedBook, file: File) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,14 +45,14 @@ export function Uploader({ onLoaded }: { onLoaded: (book: ParsedBook) => void })
       const cached = await findCached(file);
       if (cached) {
         setStatus("Loaded from cache");
-        onLoaded(cached);
+        onLoaded(cached, file);
         return;
       }
       setStatus("Parsing…");
       const book = await parseFile(file);
       if (!book.words.length) throw new Error("Couldn't extract any text from this file.");
       await cacheBook(file, book);
-      onLoaded(book);
+      onLoaded(book, file);
     } catch (e: any) {
       setError(e?.message ?? "Failed to read this file.");
     } finally {
