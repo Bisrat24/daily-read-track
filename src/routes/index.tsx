@@ -7,6 +7,9 @@ import { StatsBar } from "@/components/reader/StatsBar";
 import { ProgressCalendar } from "@/components/reader/ProgressCalendar";
 import { Library } from "@/components/reader/Library";
 import { SyncPanel } from "@/components/reader/SyncPanel";
+import { CloudBooksPanel } from "@/components/reader/CloudBooksPanel";
+import { uploadCloudBook } from "@/lib/cloudBooks";
+import { supabase } from "@/integrations/supabase/client";
 import { Switch } from "@/components/ui/switch";
 import { applyTheme, loadTheme, type Theme } from "@/lib/stats";
 import {
@@ -76,11 +79,24 @@ function Index() {
     if (autoStart) setReading(true);
   }
 
-  async function onUploaded(book: ParsedBook) {
+  async function onUploaded(book: ParsedBook, file?: File) {
     // Save outgoing progress, then add + open the new book.
     if (active) updateBookPosition(active.id, active.position);
     const entry = await addBookToLibrary(book);
     setShowUploader(false);
+    // If signed in, keep the file in the account too (best effort, max 3).
+    if (file) {
+      void (async () => {
+        const { data } = await supabase.auth.getSession();
+        if (!data.session) return;
+        try {
+          await uploadCloudBook(file, book.title);
+          window.dispatchEvent(new Event("pace:cloud-books-changed"));
+        } catch {
+          /* limit reached or offline — local copy still works */
+        }
+      })();
+    }
     await openBook(entry.id, true);
   }
 
@@ -164,6 +180,8 @@ function Index() {
         <ProgressCalendar />
 
         <SyncPanel />
+
+        <CloudBooksPanel onLoaded={(book) => void onUploaded(book)} />
 
         <footer className="pt-2 text-center text-xs text-muted-foreground">
           Your library and progress live only on this device. Works offline once installed.
