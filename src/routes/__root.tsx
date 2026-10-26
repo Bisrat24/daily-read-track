@@ -104,7 +104,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
-  errorComponent: ErrorComponent,
+  // The router's error-component type carries an optional `preload` hook and uses
+  // it to decide whether to wrap the match in Suspense. This component ships in
+  // the main bundle, so there is nothing to preload and it stays unwrapped.
+  errorComponent: Object.assign(ErrorComponent, { preload: undefined }),
+
 });
 
 function RootShell({ children }: { children: ReactNode }) {
