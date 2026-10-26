@@ -6,7 +6,9 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  type ErrorComponentProps,
 } from "@tanstack/react-router";
+
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
@@ -35,7 +37,7 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
@@ -104,10 +106,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
-  // The router's error-component type carries an optional `preload` hook and uses
-  // it to decide whether to wrap the match in Suspense. This component ships in
-  // the main bundle, so there is nothing to preload and it stays unwrapped.
-  errorComponent: Object.assign(ErrorComponent, { preload: undefined }),
+  errorComponent: ErrorComponent,
+
 
 });
 
